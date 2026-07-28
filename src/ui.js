@@ -188,8 +188,8 @@
 
     el.innerHTML = `
       <div class="flex flex-col gap-1 text-[10px] font-bold text-stone-800 dark:text-stone-200">
-        <div class="flex justify-between text-[9px] text-stone-500 dark:text-stone-400 w-64">${ticks}</div>
-        <div class="h-2.5 w-64 rounded-full shadow-inner" style="background: ${RDCFT.field.gradientCss(layer)};"></div>
+        <div class="flex justify-between text-[9px] text-stone-500 dark:text-stone-400 w-44 xl:w-64">${ticks}</div>
+        <div class="h-2.5 w-44 xl:w-64 rounded-full shadow-inner" style="background: ${RDCFT.field.gradientCss(layer)};"></div>
         <div class="text-right text-[9px] text-stone-500 dark:text-stone-400">
           ${RDCFT.utils.escapeHtml(cfg.label)} (${RDCFT.utils.escapeHtml(cfg.unit)}) · interpolado desde ${sources} punto${sources === 1 ? '' : 's'} de pronóstico
         </div>

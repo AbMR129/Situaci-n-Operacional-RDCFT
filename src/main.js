@@ -153,10 +153,14 @@
   }
 
   function bindEvents() {
-    document.getElementById('ui-theme-toggle')?.addEventListener('click', RDCFT.theme.toggle);
+    // Los manejadores se resuelven de forma diferida (`() => RDCFT.x.y()`) en vez de
+    // pasar la referencia directa: así, si un módulo no llegara a cargarse, sólo falla
+    // su propio botón al pulsarlo en vez de abortar todo el enlace de eventos y dejar
+    // la mitad de la interfaz sin responder.
+    document.getElementById('ui-theme-toggle')?.addEventListener('click', () => RDCFT.theme.toggle());
     document.getElementById('ui-zoom-in')?.addEventListener('click', () => st.map?.zoomIn());
     document.getElementById('ui-zoom-out')?.addEventListener('click', () => st.map?.zoomOut());
-    document.getElementById('ui-btn-pdf')?.addEventListener('click', RDCFT.pdf.exportReport);
+    document.getElementById('ui-btn-pdf')?.addEventListener('click', () => RDCFT.pdf.exportReport());
 
     document.querySelectorAll('.map-type-btn').forEach(btn => {
       btn.addEventListener('click', () => RDCFT.map.setTileType(btn.dataset.maptype));
@@ -185,12 +189,29 @@
     });
   }
 
+  /**
+   * Ejecuta una fase del arranque sin que su fallo tumbe a las siguientes.
+   * La aplicación se abre a menudo con doble clic sobre code.html, sin consola a la
+   * vista: un error silencioso en una fase dejaría media interfaz sin responder y sin
+   * ninguna pista de por qué.
+   */
+  function phase(name, fn) {
+    try {
+      fn();
+      return true;
+    } catch (err) {
+      console.error(`Fallo al inicializar "${name}":`, err);
+      RDCFT.ui?.toast?.(`Fallo al inicializar ${name}. Revise la consola del navegador.`, 'error');
+      return false;
+    }
+  }
+
   function init() {
-    RDCFT.theme.init();
-    RDCFT.map.init(selectPoint);
-    RDCFT.canvas.init();
-    populatePaisajeSelect();
-    bindEvents();
+    phase('el tema', () => RDCFT.theme.init());
+    phase('el mapa', () => RDCFT.map.init(selectPoint));
+    phase('las capas de canvas', () => RDCFT.canvas.init());
+    phase('el selector de paisajes', populatePaisajeSelect);
+    phase('los controles', bindEvents);
     RDCFT.ui.updateCoords();
     RDCFT.ui.updateComuna();
     RDCFT.ui.updateLocationHeader();

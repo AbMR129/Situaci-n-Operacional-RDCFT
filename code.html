@@ -340,30 +340,30 @@
 
     <!-- Map Type Switcher Toolbar (Satélite / Oscuro / Claro) -->
     <div class="absolute top-16 left-4 z-30 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Tipo de mapa base">
-      <button type="button" data-maptype="satellite" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🛰️</span> Satélite
+      <button type="button" data-maptype="satellite" title="Satélite" aria-label="Mapa satélite" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">🛰️</span> <span class="hidden xl:inline">Satélite</span>
       </button>
-      <button type="button" data-maptype="dark" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🌙</span> Mapa Oscuro
+      <button type="button" data-maptype="dark" title="Mapa oscuro" aria-label="Mapa oscuro" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">🌙</span> <span class="hidden xl:inline">Mapa Oscuro</span>
       </button>
-      <button type="button" data-maptype="light" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">☀️</span> Mapa Claro
+      <button type="button" data-maptype="light" title="Mapa claro" aria-label="Mapa claro" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">☀️</span> <span class="hidden xl:inline">Mapa Claro</span>
       </button>
     </div>
 
     <!-- Windy-Style Layer Selector Toolbar (Top Right) -->
     <div class="absolute top-16 right-4 z-30 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Capa meteorológica">
-      <button type="button" data-layer="wind" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🍃</span> Viento
+      <button type="button" data-layer="wind" title="Viento" aria-label="Capa de viento" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">🍃</span> <span class="hidden xl:inline">Viento</span>
       </button>
-      <button type="button" data-layer="temp" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🌡️</span> Temp
+      <button type="button" data-layer="temp" title="Temperatura" aria-label="Capa de temperatura" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">🌡️</span> <span class="hidden xl:inline">Temp</span>
       </button>
-      <button type="button" data-layer="humidity" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">💧</span> Humedad
+      <button type="button" data-layer="humidity" title="Humedad" aria-label="Capa de humedad" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">💧</span> <span class="hidden xl:inline">Humedad</span>
       </button>
-      <button type="button" data-layer="rain" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🌧️</span> Lluvia
+      <button type="button" data-layer="rain" title="Lluvia" aria-label="Capa de lluvia" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
+        <span aria-hidden="true">🌧️</span> <span class="hidden xl:inline">Lluvia</span>
       </button>
     </div>
 
@@ -374,7 +374,7 @@
     </div>
 
     <!-- Info Floating Box (Punto Consultado) -->
-    <div class="absolute bottom-16 left-4 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 p-4 rounded-industrial w-72 shadow-2xl z-30 transition-colors" data-purpose="map-popup">
+    <div class="absolute bottom-24 left-4 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 p-4 rounded-industrial w-72 shadow-2xl z-30 transition-colors" data-purpose="map-popup">
       <div class="flex justify-between items-start mb-2">
         <p class="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-widest">Punto Consultado</p>
         <span class="w-2.5 h-2.5 rounded-full bg-industrial-calipso animate-pulse" aria-hidden="true"></span>
@@ -387,20 +387,26 @@
       </div>
     </div>
 
-    <!-- Date Indicator -->
-    <div id="ui-date-indicator" class="absolute bottom-6 left-4 bg-white dark:bg-industrial-corteza px-4 py-2 rounded-industrial border border-stone-300 dark:border-stone-700 font-black text-sm z-30 text-stone-800 dark:text-stone-200 shadow-md">
-      Día 1: Cargando...
-    </div>
+    <!-- Barra inferior: fecha, hora y leyenda en una única fila.
+         Antes eran tres cajas posicionadas por separado (bottom-6 a izquierda, centro
+         y derecha) y en pantallas de portátil se solapaban: a 1366x768 la leyenda
+         tapaba la etiqueta de hora y el control quedaba cortado. -->
+    <div class="absolute bottom-0 left-0 right-0 z-30 px-4 pb-4 flex items-end justify-between gap-3 pointer-events-none">
 
-    <!-- Hour Selector: gobierna el mapa de calor y las partículas de viento -->
-    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 px-4 py-2 rounded-industrial shadow-2xl transition-colors">
-      <label class="text-[10px] uppercase font-bold tracking-widest text-stone-500 dark:text-stone-400" for="ui-hour-slider">Hora del mapa</label>
-      <input id="ui-hour-slider" type="range" min="0" max="23" step="1" value="12" class="w-40 md:w-56" aria-label="Hora del pronóstico mostrada en el mapa"/>
-      <span id="ui-hour-label" class="text-sm font-black text-stone-900 dark:text-white tabular-nums w-14 text-right">12:00</span>
-    </div>
+      <!-- Control temporal: día y hora juntos, porque son la misma decisión y por
+           separado no caben junto a la leyenda en pantallas de 1280-1366 px.
+           La hora gobierna el mapa de calor y las partículas de viento. -->
+      <div class="pointer-events-auto flex items-center gap-3 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 px-4 py-2 rounded-industrial shadow-2xl transition-colors">
+        <span id="ui-date-indicator" class="text-xs font-black text-stone-800 dark:text-stone-200 whitespace-nowrap">Día 1: Cargando...</span>
+        <span class="w-px h-6 bg-stone-300 dark:bg-stone-700" aria-hidden="true"></span>
+        <label class="hidden xl:inline text-[10px] uppercase font-bold tracking-widest text-stone-500 dark:text-stone-400" for="ui-hour-slider">Hora</label>
+        <input id="ui-hour-slider" type="range" min="0" max="23" step="1" value="12" class="w-28 xl:w-40" aria-label="Hora del pronóstico mostrada en el mapa"/>
+        <span id="ui-hour-label" class="text-sm font-black text-stone-900 dark:text-white tabular-nums w-14 text-right">12:00</span>
+      </div>
 
-    <!-- Color Scale Legend (populated dynamically from src/ui.js per active layer) -->
-    <div id="ui-color-legend" class="hidden absolute bottom-6 right-4 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 px-4 py-3 rounded-industrial shadow-2xl z-30 transition-colors"></div>
+      <!-- Leyenda de color (contenido dinámico desde src/ui.js según la capa activa) -->
+      <div id="ui-color-legend" class="hidden pointer-events-auto shrink-0 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 px-4 py-3 rounded-industrial shadow-2xl transition-colors"></div>
+    </div>
 
     <!-- Loading Indicator -->
     <div id="ui-loader" class="hidden absolute inset-0 bg-stone-950/60 backdrop-blur-sm z-50 flex items-center justify-center" role="status" aria-live="polite">
