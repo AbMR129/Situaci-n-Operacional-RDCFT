@@ -92,15 +92,25 @@
   }
 
   /**
-   * `screen` aclara el mapa de calor sobre bases oscuras (satélite / mapa oscuro);
-   * `multiply` conserva el contraste sobre el mapa claro.
+   * Modo de fusión del mapa de calor según el brillo de la base.
+   *
+   * El satélite NO puede usar `screen`: esa mezcla sólo aclara, y sobre un terreno
+   * ya brillante el color se satura hacia el blanco. El resultado era un velo
+   * pálido casi idéntico entre capas, que se percibe como que cambiar de
+   * temperatura a humedad "no hace nada". Sobre satélite se pinta en modo normal,
+   * que conserva el color real de la escala.
    */
+  const BLEND_BY_BASE = {
+    satellite: 'blend-normal',   // base brillante y con textura
+    dark: 'blend-screen',        // base casi negra: aclarar funciona bien
+    light: 'blend-multiply'      // base clara y plana: oscurecer conserva contraste
+  };
+
   function applyHeatmapBlend() {
     const canvas = RDCFT.state.heatmapCanvas;
     if (!canvas) return;
-    const useMultiply = RDCFT.state.mapTileType === 'light';
-    canvas.classList.toggle('blend-multiply', useMultiply);
-    canvas.classList.toggle('blend-screen', !useMultiply);
+    const wanted = BLEND_BY_BASE[RDCFT.state.mapTileType] || 'blend-normal';
+    Object.values(BLEND_BY_BASE).forEach(cls => canvas.classList.toggle(cls, cls === wanted));
   }
 
   /**
