@@ -162,18 +162,29 @@
     document.getElementById('ui-zoom-out')?.addEventListener('click', () => st.map?.zoomOut());
     document.getElementById('ui-btn-pdf')?.addEventListener('click', () => RDCFT.pdf.exportReport());
 
-    document.querySelectorAll('.map-type-btn').forEach(btn => {
-      btn.addEventListener('click', () => RDCFT.map.setTileType(btn.dataset.maptype));
-    });
+    // Barras de capa y de mapa base, y chips de día: delegación única en `document`
+    // en vez de un listener por botón. Un listener por elemento depende de que el
+    // botón exista y sea el mismo nodo en el momento del enlace; delegando, el clic
+    // se resuelve al producirse, así que sigue funcionando aunque la barra se
+    // reconstruya, se enlace antes de tiempo o se pulse un hijo (icono o etiqueta).
+    document.addEventListener('click', e => {
+      const target = e.target;
+      if (!target || typeof target.closest !== 'function') return;
 
-    document.querySelectorAll('.layer-btn').forEach(btn => {
-      btn.addEventListener('click', () => setLayer(btn.dataset.layer));
-    });
+      const mapBtn = target.closest('.map-type-btn');
+      if (mapBtn) {
+        RDCFT.map.setTileType(mapBtn.dataset.maptype);
+        return;
+      }
 
-    // Los chips de día se regeneran en cada render, así que el listener va delegado.
-    document.getElementById('ui-date-selector')?.addEventListener('click', e => {
-      const chip = e.target.closest('[data-day]');
-      if (chip) selectDay(parseInt(chip.dataset.day, 10));
+      const layerBtn = target.closest('.layer-btn');
+      if (layerBtn) {
+        setLayer(layerBtn.dataset.layer);
+        return;
+      }
+
+      const dayChip = target.closest('#ui-date-selector [data-day]');
+      if (dayChip) selectDay(parseInt(dayChip.dataset.day, 10));
     });
 
     const slider = document.getElementById('ui-hour-slider');

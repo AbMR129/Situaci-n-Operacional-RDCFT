@@ -323,16 +323,25 @@
   <main id="map-viewport" class="flex-grow relative overflow-hidden" data-purpose="map-viewport">
 
     <!-- Sub-header legend -->
-    <div class="absolute top-0 left-0 right-0 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur px-6 py-3 flex items-center justify-between border-b border-stone-200 dark:border-stone-800 z-30 shadow transition-colors">
-      <div class="flex items-center gap-6">
-        <h2 class="text-xs md:text-sm font-bold uppercase tracking-wider text-stone-800 dark:text-stone-300">Reducción de Combustible Fuego Técnico (RDCFT)</h2>
-        <div class="hidden sm:flex items-center gap-4 text-xs font-medium">
+    <!-- La subcabecera es decorativa salvo su buscador. Va con `pointer-events-none`
+         para que su franja no intercepte clics: al crecer de alto (títulos que se
+         parten en dos o tres líneas según el ancho) llegaba a rozar las barras de
+         herramientas de abajo y podía comerse la pulsación. -->
+    <div class="absolute top-0 left-0 right-0 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur px-6 py-3 flex items-center justify-between border-b border-stone-200 dark:border-stone-800 z-30 shadow transition-colors pointer-events-none">
+      <!-- `min-w-0` + `truncate` evitan que el título se parta en varias líneas: con la
+           barra lateral fija de 450 px el visor baja de 500 px de ancho y la subcabecera
+           llegaba a 145 px de alto, tapando las barras de herramientas de abajo.
+           Los chips de la leyenda pasan a `xl` porque los breakpoints de Tailwind miden
+           el viewport, no este contenedor, y a 1024 px aún se mostraban sin caber. -->
+      <div class="flex items-center gap-6 min-w-0">
+        <h2 class="text-xs md:text-sm font-bold uppercase tracking-wider text-stone-800 dark:text-stone-300 truncate">Reducción de Combustible Fuego Técnico (RDCFT)</h2>
+        <div class="hidden xl:flex items-center gap-4 text-xs font-medium whitespace-nowrap">
           <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-verde shadow" aria-hidden="true"></span> Favorable</span>
           <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-amarillo shadow" aria-hidden="true"></span> Con restricciones</span>
           <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-rojo shadow" aria-hidden="true"></span> No favorable</span>
         </div>
       </div>
-      <div class="relative w-56 md:w-64">
+      <div class="relative w-36 lg:w-56 xl:w-64 shrink-0 pointer-events-auto">
         <label class="sr-only" for="ui-search-map">Buscar paisaje o comuna</label>
         <input id="ui-search-map" data-role="search" class="w-full bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-xs py-1.5 px-3 rounded-industrial text-stone-800 dark:text-stone-200 focus:ring-1 focus:ring-industrial-naranja" placeholder="Buscar paisaje o comuna..." type="search"/>
       </div>
@@ -342,7 +351,7 @@
     <div id="map-container" class="w-full h-full relative z-10"></div>
 
     <!-- Map Type Switcher Toolbar (Satélite / Oscuro / Claro) -->
-    <div class="absolute top-16 left-4 z-30 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Tipo de mapa base">
+    <div class="absolute top-16 left-4 z-40 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Tipo de mapa base">
       <button type="button" data-maptype="satellite" title="Satélite" aria-label="Mapa satélite" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
         <span aria-hidden="true">🛰️</span> <span class="hidden xl:inline">Satélite</span>
       </button>
@@ -355,7 +364,7 @@
     </div>
 
     <!-- Windy-Style Layer Selector Toolbar (Top Right) -->
-    <div class="absolute top-16 right-4 z-30 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Capa meteorológica">
+    <div class="absolute top-16 right-4 z-40 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Capa meteorológica">
       <button type="button" data-layer="wind" title="Viento" aria-label="Capa de viento" class="layer-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
         <span aria-hidden="true">🍃</span> <span class="hidden xl:inline">Viento</span>
       </button>
