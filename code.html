@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html class="h-full dark" lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Situación Operacional - Fuel Reduction Ops & Meteorología RDCFT</title>
+
+<!-- Tailwind CSS v3 CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+
+<!-- Google Fonts: Hanken Grotesk -->
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'industrial-corteza': '#1a1816', // Dark Brown/Charcoal
+            'industrial-madera': '#2a2724',  // Lighter Brown
+            'industrial-verde': '#10b981',  // Favorable
+            'industrial-amarillo': '#f59e0b', // Con restricciones
+            'industrial-rojo': '#ef4444',    // No favorable
+            'industrial-naranja': '#f97316', // Accent
+            'industrial-calipso': '#0ea5e9', // Blue accent
+            'surface': '#fff8ef',
+            'surface-dim': '#e8d9af'
+          },
+          fontFamily: {
+            sans: ['Hanken Grotesk', 'sans-serif'],
+          },
+          borderRadius: {
+            'industrial': '4px',
+          }
+        }
+      }
+    }
+</script>
+
+<style data-purpose="layout-styles">
+    /* MODO NOCHE (DEFAULT) */
+    html.dark body {
+      background-color: #0c0b0a;
+      color: #e5e7eb;
+      overflow: hidden;
+    }
+    
+    /* MODO DÍA */
+    html.light body {
+      background-color: #f4f1ea;
+      color: #1c1917;
+      overflow: hidden;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    html.dark .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1a1816;
+    }
+    html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4a453e;
+      border-radius: 3px;
+    }
+    html.light .custom-scrollbar::-webkit-scrollbar-track {
+      background: #e7e5e4;
+    }
+    html.light .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #a8a29e;
+      border-radius: 3px;
+    }
+
+    /* Estilos personalizados para mapa Leaflet */
+    #map-container {
+      background-color: #0c0b0a;
+    }
+
+    /* Mapa de calor fusionado con las teselas: 'screen' aclara sobre bases oscuras
+       (satélite/oscuro), 'multiply' mantiene contraste sobre el mapa claro. */
+    #heatmap-canvas.blend-screen {
+      mix-blend-mode: screen;
+    }
+    #heatmap-canvas.blend-multiply {
+      mix-blend-mode: multiply;
+    }
+    .leaflet-container {
+      background-color: #0c0b0a !important;
+      font-family: 'Hanken Grotesk', sans-serif !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(12, 11, 10, 0.75) !important;
+      color: #9ca3af !important;
+      font-size: 9px !important;
+    }
+    html.light .leaflet-control-attribution {
+      background: rgba(255, 255, 255, 0.85) !important;
+      color: #4b5563 !important;
+    }
+    .leaflet-control-attribution a {
+      color: #0ea5e9 !important;
+    }
+</style>
+</head>
+<body class="h-full font-sans transition-colors duration-200">
+
+<!-- BEGIN: TopNavBar -->
+<header class="fixed top-0 left-0 right-0 h-16 bg-industrial-corteza dark:bg-industrial-corteza dark:border-stone-800 bg-white border-b border-stone-200 flex items-center justify-between px-6 z-50 shadow-md transition-colors" data-purpose="main-header">
+  <div class="flex items-center gap-8">
+    <div class="flex items-center gap-2">
+      <span class="text-industrial-naranja italic font-black text-xl tracking-tighter">Situación Operacional</span>
+    </div>
+    <!-- Search within Header -->
+    <div class="relative w-80 md:w-96 group">
+      <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-stone-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      </span>
+      <input class="bg-stone-100 dark:bg-industrial-madera border-none text-sm rounded-industrial py-2 pl-10 pr-4 w-full focus:ring-2 focus:ring-industrial-naranja text-stone-800 dark:text-stone-200 placeholder-stone-400" placeholder="Buscar lugar o comuna en Chile..." type="text"/>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3 md:gap-4">
+    <!-- Day/Night Mode Toggle -->
+    <button id="ui-theme-toggle" class="flex items-center gap-2 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 px-3 py-2 rounded-industrial text-xs font-bold transition-all active:scale-95 shadow-sm" title="Cambiar Tema">
+      <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      <span class="text-xs font-bold hidden md:inline">Modo Noche</span>
+    </button>
+
+    <!-- PDF Export Button -->
+    <button id="ui-btn-pdf" class="flex items-center gap-2 bg-industrial-naranja hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-industrial text-sm transition-all active:scale-95 shadow-md">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 .1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      Descargar PDF
+    </button>
+    
+    <div class="flex items-center gap-2 border-l border-stone-300 dark:border-stone-700 pl-3">
+      <div class="w-8 h-8 rounded-full bg-industrial-calipso flex items-center justify-center text-white font-bold text-xs shadow">UA</div>
+    </div>
+  </div>
+</header>
+<!-- END: TopNavBar -->
+
+<!-- Main Container -->
+<div class="flex h-screen pt-16 overflow-hidden">
+  
+  <!-- BEGIN: SideNavBar (Slim Operational) -->
+  <nav class="w-20 bg-stone-100 dark:bg-industrial-corteza border-r border-stone-200 dark:border-stone-800 flex flex-col items-center py-6 gap-8 z-40 transition-colors" data-purpose="sidebar-navigation">
+    <div class="flex flex-col gap-6">
+      <button class="p-3 bg-stone-200 dark:bg-industrial-madera text-industrial-naranja rounded-industrial border-l-4 border-industrial-naranja shadow-sm" title="Vista de Mapa">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      </button>
+      <button class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors" title="Meteorología">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      </button>
+      <button class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors" title="Resumen">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      </button>
+    </div>
+    <div class="mt-auto flex flex-col gap-4 mb-4">
+      <button class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+    </div>
+  </nav>
+  <!-- END: SideNavBar -->
+
+  <!-- BEGIN: Main Content Area (Map Viewport) -->
+  <main id="map-viewport" class="flex-grow relative overflow-hidden" data-purpose="map-viewport">
+    
+    <!-- Sub-header legend -->
+    <div class="absolute top-0 left-0 right-0 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur px-6 py-3 flex items-center justify-between border-b border-stone-200 dark:border-stone-800 z-30 shadow transition-colors">
+      <div class="flex items-center gap-6">
+        <h2 class="text-xs md:text-sm font-bold uppercase tracking-wider text-stone-800 dark:text-stone-300">Reducción de Combustible Fuego Técnico (RDCFT)</h2>
+        <div class="hidden sm:flex items-center gap-4 text-xs font-medium">
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-verde shadow"></span> Favorable</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-amarillo shadow"></span> Con restricciones</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-rojo shadow"></span> No favorable</span>
+        </div>
+      </div>
+      <div class="relative w-56 md:w-64">
+        <input class="w-full bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-xs py-1.5 px-3 rounded-industrial text-stone-800 dark:text-stone-200 focus:ring-1 focus:ring-industrial-naranja" placeholder="Buscar paisaje o comuna..." type="text"/>
+      </div>
+    </div>
+
+    <!-- Map Base -->
+    <div id="map-container" class="w-full h-full relative z-10"></div>
+
+    <!-- Map Type Switcher Toolbar (Satélite / Oscuro / Claro) -->
+    <div class="absolute top-16 left-4 z-30 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors">
+      <button onclick="setMapTileType('satellite')" data-maptype="satellite" class="map-type-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-industrial-naranja">
+        <span>🛰️</span> Satélite
+      </button>
+      <button onclick="setMapTileType('dark')" data-maptype="dark" class="map-type-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-industrial-naranja">
+        <span>🌙</span> Mapa Oscuro
+      </button>
+      <button onclick="setMapTileType('light')" data-maptype="light" class="map-type-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-industrial-naranja">
+        <span>☀️</span> Mapa Claro
+      </button>
+    </div>
+
+    <!-- Windy-Style Layer Selector Toolbar (Top Right) -->
+    <div class="absolute top-16 right-4 z-30 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors">
+      <button onclick="setLayer('wind')" data-layer="wind" class="layer-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-white">
+        <span>🍃</span> Viento
+      </button>
+      <button onclick="setLayer('temp')" data-layer="temp" class="layer-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-white">
+        <span>🌡️</span> Temp
+      </button>
+      <button onclick="setLayer('humidity')" data-layer="humidity" class="layer-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-white">
+        <span>💧</span> Humedad
+      </button>
+      <button onclick="setLayer('rain')" data-layer="rain" class="layer-btn px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 text-stone-700 dark:text-stone-300 hover:text-white">
+        <span>🌧️</span> Lluvia
+      </button>
+    </div>
+
+    <!-- Map Controls (Zoom In/Out) -->
+    <div class="absolute top-28 left-4 flex flex-col gap-1 z-30 shadow-lg">
+      <button id="ui-zoom-in" class="w-10 h-10 bg-white dark:bg-industrial-corteza text-stone-800 dark:text-white border border-stone-300 dark:border-stone-700 flex items-center justify-center font-bold hover:bg-stone-100 dark:hover:bg-stone-800 rounded-t-industrial active:scale-95">+</button>
+      <button id="ui-zoom-out" class="w-10 h-10 bg-white dark:bg-industrial-corteza text-stone-800 dark:text-white border border-stone-300 dark:border-stone-700 flex items-center justify-center font-bold hover:bg-stone-100 dark:hover:bg-stone-800 rounded-b-industrial active:scale-95">-</button>
+    </div>
+
+    <!-- Info Floating Box (Punto Consultado) -->
+    <div class="absolute bottom-16 left-4 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 p-4 rounded-industrial w-72 shadow-2xl z-30 transition-colors" data-purpose="map-popup">
+      <div class="flex justify-between items-start mb-2">
+        <p class="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-widest">Punto Consultado</p>
+        <span class="w-2.5 h-2.5 rounded-full bg-industrial-calipso animate-pulse"></span>
+      </div>
+      <p id="ui-coords-decimal" class="text-lg font-black text-stone-900 dark:text-white leading-none">-36.1645, -72.1882</p>
+      <p id="ui-coords-dms" class="text-[10px] text-stone-500 dark:text-stone-400 mt-1 font-mono">36°09'52.2"S 72°10'48.6"O</p>
+      <div class="mt-3 pt-3 border-t border-stone-200 dark:border-stone-800">
+        <p id="ui-comuna-name" class="text-sky-600 dark:text-industrial-calipso text-sm font-bold">Comuna: Cauquenes</p>
+        <p id="ui-map-paisaje" class="text-amber-600 dark:text-industrial-amarillo text-sm font-bold">Paisaje: Valle de Cauquenes</p>
+      </div>
+    </div>
+
+    <!-- Date Indicator -->
+    <div id="ui-date-indicator" class="absolute bottom-6 left-4 bg-white dark:bg-industrial-corteza px-4 py-2 rounded-industrial border border-stone-300 dark:border-stone-700 font-black text-sm z-30 text-stone-800 dark:text-stone-200 shadow-md">
+      Día 1: Cargando...
+    </div>
+
+    <!-- Color Scale Legend (Windy-style, populated dynamically from app.js per active layer) -->
+    <div id="ui-color-legend" class="hidden absolute bottom-6 right-4 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 px-4 py-3 rounded-industrial shadow-2xl z-30 transition-colors"></div>
+
+    <!-- Loading Indicator -->
+    <div id="ui-loader" class="hidden absolute inset-0 bg-stone-950/60 backdrop-blur-sm z-50 flex items-center justify-center">
+      <div class="bg-white dark:bg-industrial-corteza border border-stone-300 dark:border-stone-700 p-6 rounded-industrial shadow-2xl flex flex-col items-center gap-3">
+        <div class="w-10 h-10 border-4 border-industrial-naranja border-t-transparent rounded-full animate-spin"></div>
+        <p class="text-sm font-bold text-stone-800 dark:text-stone-200">Consultando API de meteorología en tiempo real...</p>
+      </div>
+    </div>
+
+  </main>
+  <!-- END: Main Content Area -->
+
+  <!-- BEGIN: Data Sidebar -->
+  <aside class="w-[450px] bg-white dark:bg-industrial-madera border-l border-stone-200 dark:border-stone-800 flex flex-col h-full overflow-hidden z-40 shadow-2xl transition-colors" data-purpose="details-sidebar">
+    
+    <!-- Date Selector and Predios -->
+    <div class="p-4 border-b border-stone-200 dark:border-stone-800 flex items-center gap-3 bg-stone-50 dark:bg-industrial-corteza/40">
+      <div id="ui-date-selector" class="flex-grow flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+        <!-- Renderizado dinámicamente desde app.js -->
+      </div>
+    </div>
+
+    <div class="p-6 overflow-y-auto flex-grow custom-scrollbar space-y-6">
+      
+      <!-- Selection Header -->
+      <div class="space-y-4">
+        <select id="ui-select-paisaje" class="w-full bg-stone-100 dark:bg-stone-900 border-stone-300 dark:border-stone-700 text-stone-900 dark:text-white rounded-industrial font-bold py-3 px-3 focus:ring-2 focus:ring-industrial-naranja shadow-sm">
+          <option value="Valle de Cauquenes">Valle de Cauquenes</option>
+          <option value="Secano del Mataquito">Secano del Mataquito</option>
+          <option value="Alto Biobío">Alto Biobío</option>
+        </select>
+        
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 id="ui-location-title" class="text-2xl font-black text-stone-900 dark:text-white leading-tight">Valle de Cauquenes</h1>
+            <p id="ui-sidebar-date" class="text-xs text-stone-500 dark:text-stone-400 uppercase tracking-widest font-bold mt-1">Martes 28 de julio</p>
+          </div>
+          <span id="ui-status-badge" class="bg-emerald-500/20 text-emerald-600 dark:text-industrial-verde border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+            Cargando...
+          </span>
+        </div>
+      </div>
+
+      <!-- Weather Timeline Cards Container -->
+      <div id="ui-timeline-cards" class="space-y-4">
+        <!-- Renderizado dinámicamente desde app.js -->
+      </div>
+
+    </div>
+  </aside>
+  <!-- END: Data Sidebar -->
+
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Custom Application Logic -->
+<script src="app.js"></script>
+
+</body>
+</html>
