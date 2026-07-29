@@ -59,6 +59,8 @@
     }).addTo(st.map);
 
     st.cityMarkersGroup = L.layerGroup().addTo(st.map);
+    st.localityMarkersGroup = L.layerGroup().addTo(st.map);
+    loadOfficialLocalities().then(() => renderCityBadges(onPointSelected));
 
     st.map.on('click', e => {
       clearParcelSelection();
@@ -364,14 +366,61 @@
     Object.values(BLEND_BY_BASE).forEach(cls => canvas.classList.toggle(cls, cls === wanted));
   }
 
+  const INE_LOCALITIES_URL = 'https://services5.arcgis.com/hUyD8u3TeZLKPe4T/ArcGIS/rest/services/Censo2024_v2/FeatureServer/0/query';
+  const INE_REGIONS_WHERE = '(CUT >= 7000 AND CUT < 8000) OR (CUT >= 8000 AND CUT < 11000) OR (CUT >= 14000 AND CUT < 15000) OR (CUT >= 16000 AND CUT < 17000)';
+  const INE_PAGE_SIZE = 2000;
+
+  function normalizedLocalityName(value) {
+    return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').trim();
+  }
+
+  /** Carga todos los topónimos oficiales INE de Maule a Los Lagos por páginas. */
+  async function loadOfficialLocalities() {
+    const st = RDCFT.state;
+    if (st.officialLocalities.length || st.officialLocalitiesLoading) return st.officialLocalities;
+    st.officialLocalitiesLoading = true;
+    try {
+      const all = [];
+      for (let offset = 0; ; offset += INE_PAGE_SIZE) {
+        const params = new URLSearchParams({
+          where: INE_REGIONS_WHERE,
+          outFields: 'CUT,LOCALIDAD',
+          returnGeometry: 'true',
+          f: 'geojson',
+          resultOffset: String(offset),
+          resultRecordCount: String(INE_PAGE_SIZE),
+          orderByFields: 'OBJECTID'
+        });
+        const response = await fetch(`${INE_LOCALITIES_URL}?${params}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const batch = data.features || [];
+        all.push(...batch);
+        if (batch.length < INE_PAGE_SIZE) break;
+      }
+      st.officialLocalities = all.map(feature => ({
+        name: feature.properties?.LOCALIDAD,
+        lng: feature.geometry?.coordinates?.[0],
+        lat: feature.geometry?.coordinates?.[1]
+      })).filter(place => place.name && Number.isFinite(place.lat) && Number.isFinite(place.lng));
+    } catch (err) {
+      console.warn('No se pudieron cargar las localidades oficiales INE:', err);
+      RDCFT.ui.toast('No se pudo cargar el catálogo completo de localidades.', 'warn');
+    } finally {
+      st.officialLocalitiesLoading = false;
+    }
+    return st.officialLocalities;
+  }
+
   /**
    * Badges de ciudad al estilo Windy. Cada uno muestra el valor real de su propio
    * pronóstico para el día y la hora seleccionados.
    */
   function renderCityBadges(onPointSelected) {
     const st = RDCFT.state;
-    if (!st.cityMarkersGroup) return;
+    if (!st.cityMarkersGroup || !st.localityMarkersGroup) return;
     st.cityMarkersGroup.clearLayers();
+    st.localityMarkersGroup.clearLayers();
 
     const layer = st.activeLayer;
     const isWindLayer = layer === 'wind';
@@ -418,6 +467,45 @@
       });
       marker.on('click', () => onPointSelected(spot.lat, spot.lng, spot.name));
       st.cityMarkersGroup.addLayer(marker);
+    });
+
+    renderOfficialLocalityBadges(onPointSelected, layer, cfg, dateStr, isWindLayer);
+  }
+
+  function interpolateLocalityValue(layer, lat, lng, dateStr) {
+    const st = RDCFT.state;
+    if (layer !== 'wind') return RDCFT.field.interpolate(RDCFT.field.knownPoints(layer), lat, lng);
+    const points = st.regionalSamples.map(spot => {
+      const index = dateStr ? RDCFT.weather.indexFor(spot.hourly, dateStr, st.selectedHour) : -1;
+      const value = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_speed_10m?.[index], null) : null;
+      return value === null ? null : { lat: spot.lat, lng: spot.lng, value };
+    }).filter(Boolean);
+    return RDCFT.field.interpolate(points, lat, lng);
+  }
+
+  /** Etiquetas de todas las localidades INE visibles al acercar el mapa. */
+  function renderOfficialLocalityBadges(onPointSelected, layer, cfg, dateStr, isWindLayer) {
+    const st = RDCFT.state;
+    if (!st.localityMarkersGroup || !st.map || st.map.getZoom() < 11) return;
+    const visibleArea = st.map.getBounds().pad(0.04);
+    const regionalNames = new Set(st.regionalSamples.map(spot => normalizedLocalityName(spot.name)));
+
+    st.officialLocalities.filter(place =>
+      !regionalNames.has(normalizedLocalityName(place.name)) && visibleArea.contains([place.lat, place.lng])
+    ).forEach(place => {
+      const value = interpolateLocalityValue(layer, place.lat, place.lng, dateStr);
+      const text = value === null
+        ? '—'
+        : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${isWindLayer ? ' km/h' : cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
+      const icon = L.divIcon({
+        className: 'windy-city-badge',
+        html: `<div class="city-badge"><span class="city-badge-name">${RDCFT.utils.escapeHtml(place.name)}</span><span class="city-badge-value">${RDCFT.utils.escapeHtml(text)}</span></div>`,
+        iconSize: [90, 20],
+        iconAnchor: [45, 10]
+      });
+      const marker = L.marker([place.lat, place.lng], { icon, alt: `${place.name}: ${text} (interpolado)` });
+      marker.on('click', () => onPointSelected(place.lat, place.lng, place.name));
+      st.localityMarkersGroup.addLayer(marker);
     });
   }
 
