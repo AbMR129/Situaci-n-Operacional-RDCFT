@@ -2,10 +2,10 @@
  * RDCFT · Configuración
  * Única fuente de verdad para umbrales, capas, paisajes y puntos de muestreo.
  *
- * Los módulos se cargan como scripts clásicos en orden (ver code.html) y comparten
+ * Los módulos se cargan como scripts clásicos en orden (ver index.html) y comparten
  * el espacio de nombres `window.RDCFT`. Se evitan módulos ES a propósito: el
  * proyecto no tiene build y los módulos ES no cargan bajo el protocolo file://,
- * lo que rompería el abrir code.html con doble clic.
+ * lo que rompería el abrir index.html con doble clic.
  */
 (function (RDCFT) {
   'use strict';

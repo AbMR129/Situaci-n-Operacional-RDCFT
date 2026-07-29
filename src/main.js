@@ -624,7 +624,7 @@
 
   /**
    * Ejecuta una fase del arranque sin que su fallo tumbe a las siguientes.
-   * La aplicación se abre a menudo con doble clic sobre code.html, sin consola a la
+   * La aplicación se abre a menudo con doble clic sobre index.html, sin consola a la
    * vista: un error silencioso en una fase dejaría media interfaz sin responder y sin
    * ninguna pista de por qué.
    */

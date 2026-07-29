@@ -1,0 +1,18 @@
+# Sistema operativo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Dependencias y artefactos (por si mas adelante se anade un paso de build)
+node_modules/
+dist/
+.wrangler/
+
+# Archivos temporales de depuracion
+_debug.html
+*.log
