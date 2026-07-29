@@ -60,7 +60,10 @@
 
     st.cityMarkersGroup = L.layerGroup().addTo(st.map);
 
-    st.map.on('click', e => onPointSelected(e.latlng.lat, e.latlng.lng, null));
+    st.map.on('click', e => {
+      clearParcelSelection();
+      onPointSelected(e.latlng.lat, e.latlng.lng, null);
+    });
 
     // El mapa de calor está anclado al terreno: cualquier desplazamiento o zoom
     // obliga a reproyectarlo. Antes aquí se redimensionaba el canvas en cada
@@ -205,6 +208,15 @@
       if (st.parcelSelectionLayer) st.parcelSelectionLayer.setPopupContent(parcelPopupHtml(feature, center)).openPopup(center);
     });
     return forecastRequest;
+  }
+
+  /** Quita el resaltado temporal y la ficha al volver a consultar el mapa libremente. */
+  function clearParcelSelection() {
+    const st = RDCFT.state;
+    if (!st.parcelSelectionLayer) return;
+    if (st.map?.hasLayer(st.parcelSelectionLayer)) st.map.removeLayer(st.parcelSelectionLayer);
+    st.map?.closePopup();
+    st.parcelSelectionLayer = null;
   }
 
   async function loadParcelsData() {
@@ -395,5 +407,5 @@
     if (RDCFT.state.marker) RDCFT.state.marker.setLatLng([lat, lng]);
   }
 
-  RDCFT.map = { init, setTileType, toggleParcels, findParcel, searchParcels, selectParcelFeature, applyHeatmapBlend, renderCityBadges, moveMarker };
+  RDCFT.map = { init, setTileType, toggleParcels, findParcel, searchParcels, selectParcelFeature, clearParcelSelection, applyHeatmapBlend, renderCityBadges, moveMarker };
 })(window.RDCFT = window.RDCFT || {});
