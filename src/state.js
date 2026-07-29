@@ -42,6 +42,7 @@
     localityMarkersGroup: null,
     officialLocalities: [],
     officialLocalitiesLoading: false,
+    officialLocalitiesRequested: false,
     parcelsLayer: null,
     parcelsData: null,
     parcelSelectionLayer: null,
@@ -65,5 +66,8 @@
 
   RDCFT.markHeatmapDirty = function () {
     RDCFT.state.heatmapDirty = true;
+    // Cuando Viento no está activo no existe un ciclo continuo; se agenda un
+    // único cuadro para reproyectar la capa de lluvia tras mover o redimensionar.
+    RDCFT.canvas?.requestRender?.();
   };
 })(window.RDCFT = window.RDCFT || {});

@@ -60,7 +60,6 @@
 
     st.cityMarkersGroup = L.layerGroup().addTo(st.map);
     st.localityMarkersGroup = L.layerGroup().addTo(st.map);
-    loadOfficialLocalities().then(() => renderCityBadges(onPointSelected));
 
     st.map.on('click', e => {
       clearParcelSelection();
@@ -381,8 +380,9 @@
   /** Carga todos los topónimos oficiales INE de Maule a Los Lagos por páginas. */
   async function loadOfficialLocalities() {
     const st = RDCFT.state;
-    if (st.officialLocalities.length || st.officialLocalitiesLoading) return st.officialLocalities;
+    if (st.officialLocalities.length || st.officialLocalitiesLoading || st.officialLocalitiesRequested) return st.officialLocalities;
     st.officialLocalitiesLoading = true;
+    st.officialLocalitiesRequested = true;
     try {
       const all = [];
       for (let offset = 0; ; offset += INE_PAGE_SIZE) {
@@ -511,6 +511,14 @@
   function renderOfficialLocalityBadges(onPointSelected, layer, cfg, dateStr, isWindLayer) {
     const st = RDCFT.state;
     if (!st.localityMarkersGroup || !st.map || st.map.getZoom() < 13) return;
+    // El catálogo completo es grande y no aporta nada en la vista regional.
+    // Se descarga recién cuando el usuario se acerca al nivel donde puede verlo.
+    if (!st.officialLocalities.length) {
+      if (!st.officialLocalitiesLoading) {
+        loadOfficialLocalities().then(() => renderCityBadges(onPointSelected));
+      }
+      return;
+    }
     const detailedLabels = st.map.getZoom() >= 14;
     const visibleArea = st.map.getBounds().pad(0.04);
     const regionalNames = new Set(st.regionalSamples.map(spot => normalizedLocalityName(spot.name)));

@@ -313,6 +313,9 @@
     RDCFT.ui.renderLegend();
     RDCFT.map.renderCityBadges(selectPoint);
     RDCFT.markHeatmapDirty();
+    // Si veníamos de otra capa, el bucle de viento estaba detenido. Este único
+    // repintado lo reactiva al elegir Viento y limpia el canvas al elegir otra.
+    RDCFT.canvas.requestRender();
 
     // El mapa de calor queda reservado para lluvia; temperatura y humedad se
     // muestran mediante badges y leyenda para no ocultar la cartografía base.

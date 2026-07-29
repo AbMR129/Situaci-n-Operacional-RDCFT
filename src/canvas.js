@@ -25,6 +25,11 @@
   const MAX_PX_S = 200;
   const TRAIL_POINTS = 14;   // posiciones guardadas por partícula
 
+  /** Programa como máximo un fotograma pendiente. */
+  function scheduleFrame() {
+    if (rafId === null) rafId = requestAnimationFrame(animate);
+  }
+
   function init() {
     const container = document.getElementById('map-viewport');
     if (!container) return;
@@ -50,7 +55,7 @@
     createParticles();
 
     window.addEventListener('resize', resize);
-    if (rafId === null) rafId = requestAnimationFrame(animate);
+    scheduleFrame();
   }
 
   /**
@@ -309,6 +314,9 @@
   let loopErrorLogged = false;
 
   function animate(timestamp) {
+    // El callback ya se consumió. Así `scheduleFrame` no puede crear un segundo
+    // bucle paralelo mientras se está dibujando el fotograma actual.
+    rafId = null;
     try {
       drawFrame(timestamp);
     } catch (err) {
@@ -317,7 +325,9 @@
         console.error('Fallo al dibujar el fotograma; la animación continúa:', err);
       }
     } finally {
-      rafId = requestAnimationFrame(animate);
+      // La animación continua sólo hace falta con Viento activo. Las demás capas
+      // piden un único repintado cuando cambian, evitando trabajo a 60 FPS vacío.
+      if (RDCFT.state.activeLayer === 'wind' && !windPausedForZoom) scheduleFrame();
     }
   }
 
@@ -343,7 +353,6 @@
     // Durante el zoom Leaflet escala el mapa por CSS y las proyecciones no valen.
     if (windPausedForZoom || st.activeLayer !== 'wind') {
       lastFrameAt = null;
-      rafId = requestAnimationFrame(animate);
       return;
     }
 
@@ -393,7 +402,6 @@
     ctx.lineWidth = 1.1;
     ctx.stroke();
 
-    rafId = requestAnimationFrame(animate);
   }
 
   /** Reinicia el campo de partículas tras cambiar de día, hora o ubicación. */
@@ -405,6 +413,7 @@
     });
     windFieldKey = '';
     lastFieldUpdate = 0;
+    if (RDCFT.state.activeLayer === 'wind' && !windPausedForZoom) scheduleFrame();
   }
 
   function setZooming(isZooming) {
@@ -418,6 +427,7 @@
       // que el flujo continúa en vez de reaparecer entero de golpe tras el zoom.
       st.windParticles.forEach(p => { p.trail = [p.x, p.y]; });
       lastFieldUpdate = 0;
+      if (st.activeLayer === 'wind') scheduleFrame();
     }
   }
 
@@ -432,5 +442,5 @@
     return toScreenVelocity(sampleWindAtScreen(x, y) || fallbackWind());
   }
 
-  RDCFT.canvas = { init, resize, refreshParticles, setZooming, velocityAt };
+  RDCFT.canvas = { init, resize, refreshParticles, setZooming, velocityAt, requestRender: scheduleFrame };
 })(window.RDCFT = window.RDCFT || {});
