@@ -139,12 +139,12 @@
     // las partículas giradas 90° respecto del viento real.
     // Una leve variación por partícula evita un patrón artificial de líneas
     // perfectamente paralelas cuando el viento regional viene casi del norte/sur.
-    const angleRad = ((dirDeg + 90 + (Math.random() - 0.5) * 18) * Math.PI) / 180;
+    const angleRad = ((dirDeg + 90 + (Math.random() - 0.5) * 28) * Math.PI) / 180;
     const jitter = 0.8 + Math.random() * 0.4;
 
-    p.vx = Math.cos(angleRad) * speed * jitter;
-    p.vy = Math.sin(angleRad) * speed * jitter;
-    p.speed = speed;
+    p.flowAngle = angleRad;
+    p.speed = speed * jitter;
+    p.phase = Math.random() * Math.PI * 2;
 
     return p;
   }
@@ -237,18 +237,24 @@
 
     // Desvanecer las estelas sin acumular fondo negro.
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.07)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'source-over';
 
-    ctx.lineWidth = 1.8;
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.88)';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.78)';
     ctx.beginPath();
 
     st.windParticles.forEach(p => {
+      // Desvío pequeño y continuo: conserva el rumbo regional, pero evita que
+      // el flujo se lea como una cortina de lluvia en vientos norte-sur.
+      const angle = p.flowAngle + Math.sin(p.age * 3.2 + p.phase) * 0.16;
+      const vx = Math.cos(angle) * p.speed;
+      const vy = Math.sin(angle) * p.speed;
       ctx.moveTo(p.x, p.y);
-      p.x += p.vx * RDCFT.config.WIND_ANIMATION_SPEED * dt;
-      p.y += p.vy * RDCFT.config.WIND_ANIMATION_SPEED * dt;
+      p.x += vx * RDCFT.config.WIND_ANIMATION_SPEED * dt;
+      p.y += vy * RDCFT.config.WIND_ANIMATION_SPEED * dt;
       p.age += dt;
       ctx.lineTo(p.x, p.y);
 
