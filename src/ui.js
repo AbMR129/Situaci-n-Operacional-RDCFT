@@ -368,6 +368,7 @@
     set('ui-map-inspector-coords', `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`);
     set('ui-map-inspector-dms', RDCFT.utils.formatCoordsDMS(center.lat, center.lng));
     set('ui-map-inspector-detail', `Centro visible · ${st.regionalSamples.length || 0} puntos regionales · interpolado`);
+    set('ui-map-inspector-context', `Punto operativo: ${st.locationName || `${st.coords.lat.toFixed(4)}, ${st.coords.lng.toFixed(4)}`}`);
 
     const status = $('ui-map-inspector-status');
     if (status) {

@@ -147,6 +147,15 @@
       saveMapComparisonPoint(target, lat, lng);
       return;
     }
+    if (name === '__map_center_operational__') {
+      selectPoint(lat, lng, null);
+      RDCFT.ui.toast('El centro del mapa ahora es el punto operativo.', 'info');
+      return;
+    }
+    if (!name) {
+      RDCFT.map.focusMapInspector(lat, lng);
+      return;
+    }
     selectPoint(lat, lng, name);
   }
 
@@ -557,6 +566,7 @@
     document.getElementById('ui-btn-pdf')?.addEventListener('click', () => RDCFT.pdf.exportReport());
     document.getElementById('ui-parcels-toggle')?.addEventListener('click', () => RDCFT.map.toggleParcels());
     document.getElementById('ui-clear-parcel-selection')?.addEventListener('click', () => RDCFT.map.clearParcelSelection());
+    document.getElementById('ui-use-map-center')?.addEventListener('click', () => RDCFT.map.useMapCenterAsOperationalPoint());
     document.getElementById('ui-comparison-open')?.addEventListener('click', openComparisonModal);
     document.getElementById('ui-comparison-close')?.addEventListener('click', () => closeComparisonModal(true));
     document.getElementById('ui-comparison-modal')?.addEventListener('click', e => {

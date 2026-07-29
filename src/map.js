@@ -53,13 +53,14 @@
       className: 'custom-map-pin',
       html: `
         <div class="relative flex items-center justify-center">
-          <span class="animate-ping absolute inline-flex h-9 w-9 rounded-full bg-industrial-naranja opacity-80"></span>
-          <div class="w-7 h-7 rounded-full bg-industrial-naranja border-2 border-white flex items-center justify-center shadow-2xl">
+          <span class="animate-ping absolute inline-flex h-9 w-9 rounded-full bg-industrial-calipso opacity-70"></span>
+          <div class="w-7 h-7 rounded-full bg-industrial-calipso border-2 border-white flex items-center justify-center shadow-2xl">
             <div class="w-2.5 h-2.5 rounded-full bg-stone-950"></div>
           </div>
+          <span class="absolute left-8 whitespace-nowrap rounded bg-stone-950/85 px-1.5 py-0.5 text-[9px] font-black text-white shadow">Punto operativo</span>
         </div>
       `,
-      iconSize: [36, 36],
+      iconSize: [126, 36],
       iconAnchor: [18, 18]
     });
 
@@ -74,6 +75,8 @@
 
     st.map.on('click', e => {
       clearParcelSelection();
+      // Un clic libre explora ese sector sin reemplazar el punto operativo. El
+      // reemplazo queda explícito en el botón del inspector.
       onPointSelected(e.latlng.lat, e.latlng.lng, null);
     });
 
@@ -577,5 +580,18 @@
     if (RDCFT.state.marker) RDCFT.state.marker.setLatLng([lat, lng]);
   }
 
-  RDCFT.map = { init, setTileType, toggleParcels, findParcel, searchParcels, selectParcelFeature, clearParcelSelection, applyHeatmapBlend, renderCityBadges, moveMarker };
+  function focusMapInspector(lat, lng) {
+    const st = RDCFT.state;
+    if (!st.map) return;
+    st.map.panTo([lat, lng], { animate: true, duration: 0.22 });
+    RDCFT.ui?.updateMapInspector?.(lat, lng);
+  }
+
+  function useMapCenterAsOperationalPoint() {
+    const center = RDCFT.state.map?.getCenter?.();
+    if (!center) return;
+    RDCFT.state.onPointSelected?.(center.lat, center.lng, '__map_center_operational__');
+  }
+
+  RDCFT.map = { init, setTileType, toggleParcels, findParcel, searchParcels, selectParcelFeature, clearParcelSelection, applyHeatmapBlend, renderCityBadges, moveMarker, focusMapInspector, useMapCenterAsOperationalPoint };
 })(window.RDCFT = window.RDCFT || {});
