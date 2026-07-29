@@ -519,14 +519,17 @@
       }
       return;
     }
-    const detailedLabels = st.map.getZoom() >= 14;
+    const zoom = st.map.getZoom();
+    const detailedLabels = zoom >= 14;
     const visibleArea = st.map.getBounds().pad(0.04);
     const regionalNames = new Set(st.regionalSamples.map(spot => normalizedLocalityName(spot.name)));
     // Un punto por celda a zoom intermedio; una etiqueta por celda en detalle.
     // Esto mantiene una muestra territorial legible, en vez de crear un marcador
     // Leaflet por cada localidad del catálogo que caiga dentro de la vista.
-    const cellWidth = detailedLabels ? 220 : 110;
-    const cellHeight = detailedLabels ? 55 : 80;
+    // Al seguir acercándose, cada celda se hace menor y revela sectores que en
+    // el nivel anterior se reservaban para no superponer textos.
+    const cellWidth = !detailedLabels ? 110 : zoom >= 16 ? 120 : zoom >= 15 ? 160 : 220;
+    const cellHeight = !detailedLabels ? 80 : zoom >= 16 ? 32 : zoom >= 15 ? 42 : 55;
     const occupiedCells = new Set();
 
     st.officialLocalities.filter(place =>

@@ -18,12 +18,12 @@
   let lastFieldUpdate = 0;
 
   // Calibración visual. La velocidad se expresa en píxeles por segundo y es
-  // independiente de los FPS. El suelo garantiza que el flujo se lea incluso con
-  // viento muy débil, que es lo habitual en invierno en la zona.
-  const MIN_PX_S = 45;
-  const PX_PER_KMH = 9;
-  const MAX_PX_S = 200;
-  const TRAIL_POINTS = 14;   // posiciones guardadas por partícula
+  // independiente de los FPS. La relación no es lineal: conserva la diferencia
+  // entre pronósticos suaves y fuertes sin que una ráfaga vuelva la vista ilegible.
+  const MIN_PX_S = 18;
+  const PX_PER_SQRT_KMH = 16;
+  const MAX_PX_S = 88;
+  const TRAIL_POINTS = 9;    // posiciones guardadas por partícula
 
   /** Programa como máximo un fotograma pendiente. */
   function scheduleFrame() {
@@ -198,7 +198,13 @@
   /** Convierte componentes en km/h a velocidad de pantalla en píxeles por segundo. */
   function toScreenVelocity(wind) {
     const magnitude = Math.hypot(wind.sx, wind.sy);
-    const pixels = RDCFT.utils.clamp(MIN_PX_S + magnitude * PX_PER_KMH, MIN_PX_S, MAX_PX_S);
+    // Una curva de raíz cuadrada mantiene la proporcionalidad perceptible al
+    // pronóstico y comprime los vientos altos para una lectura más calmada.
+    const pixels = RDCFT.utils.clamp(
+      MIN_PX_S + Math.sqrt(magnitude) * PX_PER_SQRT_KMH,
+      MIN_PX_S,
+      MAX_PX_S
+    );
     if (magnitude < 0.001) return { vx: 0, vy: pixels };
     const scale = pixels / magnitude;
     return { vx: wind.sx * scale, vy: wind.sy * scale };
@@ -222,8 +228,11 @@
    */
   function particleCountForZoom() {
     const zoom = RDCFT.state.map?.getZoom?.() ?? 9;
-    if (zoom >= 14) return 110;
-    if (zoom >= 12) return 130;
+    if (zoom >= 15) return 55;
+    if (zoom >= 14) return 70;
+    if (zoom >= 13) return 90;
+    if (zoom >= 12) return 110;
+    if (zoom >= 10) return 130;
     return RDCFT.config.PARTICLE_COUNT;
   }
 
