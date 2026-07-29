@@ -412,6 +412,22 @@
     return st.officialLocalities;
   }
 
+  function localityBadgeColor(layer, value) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '#38bdf8';
+    if (layer === 'wind') return '#22d3ee';
+    const rgb = RDCFT.field.colorForValue(layer, value);
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+  }
+
+  function localityBadgeIcon(name, text, color) {
+    return L.divIcon({
+      className: 'windy-city-badge',
+      html: `<div class="city-badge" style="--badge-dot:${color}"><i class="city-badge-dot" aria-hidden="true"></i><span class="city-badge-name">${RDCFT.utils.escapeHtml(name)}</span><span class="city-badge-value">${RDCFT.utils.escapeHtml(text)}</span></div>`,
+      iconSize: [120, 20],
+      iconAnchor: [0, 10]
+    });
+  }
+
   /**
    * Badges de ciudad al estilo Windy. Cada uno muestra el valor real de su propio
    * pronóstico para el día y la hora seleccionados.
@@ -449,17 +465,7 @@
           : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
       }
 
-      const icon = L.divIcon({
-        className: 'windy-city-badge',
-        html: `
-          <div class="city-badge">
-            <span class="city-badge-name">${RDCFT.utils.escapeHtml(spot.name)}</span>
-            <span class="city-badge-value">${RDCFT.utils.escapeHtml(text)}</span>
-          </div>
-        `,
-        iconSize: [90, 20],
-        iconAnchor: [45, 10]
-      });
+      const icon = localityBadgeIcon(spot.name, text, localityBadgeColor(layer, value));
 
       const marker = L.marker([spot.lat, spot.lng], {
         icon: icon,
@@ -497,12 +503,7 @@
       const text = value === null
         ? '—'
         : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${isWindLayer ? ' km/h' : cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
-      const icon = L.divIcon({
-        className: 'windy-city-badge',
-        html: `<div class="city-badge"><span class="city-badge-name">${RDCFT.utils.escapeHtml(place.name)}</span><span class="city-badge-value">${RDCFT.utils.escapeHtml(text)}</span></div>`,
-        iconSize: [90, 20],
-        iconAnchor: [45, 10]
-      });
+      const icon = localityBadgeIcon(place.name, text, localityBadgeColor(layer, value));
       const marker = L.marker([place.lat, place.lng], { icon, alt: `${place.name}: ${text} (interpolado)` });
       marker.on('click', () => onPointSelected(place.lat, place.lng, place.name));
       st.localityMarkersGroup.addLayer(marker);
