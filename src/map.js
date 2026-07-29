@@ -315,6 +315,11 @@
     try {
       const data = await loadParcelsData();
       st.parcelsLayer = L.geoJSON(data, {
+        // Sin `renderer` explícito Leaflet usa SVG: un elemento <path> en el DOM
+        // por cada predio. Con más de 5.000, el navegador tiene que mantener y
+        // recalcular esos miles de nodos en cada desplazamiento y se bloquea.
+        // El renderizador de lienzo los dibuja todos sobre un único canvas.
+        renderer: L.canvas({ padding: 0.3 }),
         style: {
           color: '#f97316',
           weight: 1,
@@ -323,13 +328,10 @@
           fillOpacity: 0.05
         },
         onEachFeature(feature, layer) {
-          const properties = feature.properties || {};
-          layer.bindPopup(`
-            <div style="font-family: 'Hanken Grotesk', sans-serif; min-width: 160px;">
-              <strong>${RDCFT.utils.escapeHtml(properties.nombre || 'Predio sin nombre')}</strong><br>
-              <span style="font-size: 12px; color: #57534e;">ID predio: ${RDCFT.utils.escapeHtml(properties.id || '—')}</span>
-            </div>
-          `);
+          // Sin popup propio: al pulsar, `selectParcelFeature` resalta el predio y
+          // abre la ficha completa. El popup que se enlazaba aquí a los 5.000
+          // predios quedaba tapado por esa ficha en el mismo clic, así que sólo
+          // consumía tiempo y memoria al construir la capa.
           layer.on('click', event => {
             L.DomEvent.stopPropagation(event.originalEvent);
             selectParcelFeature(feature);
@@ -501,35 +503,40 @@
   }
 
   /**
-   * Densidad adaptativa: puntos discretos a zoom medio y textos completos sólo
-   * de cerca. Una cuadrícula evita que las etiquetas detalladas se encimen.
+   * Densidad adaptativa para el catálogo INE. Las ciudades principales viven en
+   * `cityMarkersGroup`; aquí se dibujan sólo localidades secundarias. No basta
+   * con evitar el choque de textos: si se dejan todos los puntos, a gran zoom
+   * también forman una trama visual demasiado densa.
    */
   function renderOfficialLocalityBadges(onPointSelected, layer, cfg, dateStr, isWindLayer) {
     const st = RDCFT.state;
-    if (!st.localityMarkersGroup || !st.map || st.map.getZoom() < 11) return;
-    const detailedLabels = st.map.getZoom() >= 13;
+    if (!st.localityMarkersGroup || !st.map || st.map.getZoom() < 13) return;
+    const detailedLabels = st.map.getZoom() >= 14;
     const visibleArea = st.map.getBounds().pad(0.04);
     const regionalNames = new Set(st.regionalSamples.map(spot => normalizedLocalityName(spot.name)));
-    const occupiedLabelCells = new Set();
+    // Un punto por celda a zoom intermedio; una etiqueta por celda en detalle.
+    // Esto mantiene una muestra territorial legible, en vez de crear un marcador
+    // Leaflet por cada localidad del catálogo que caiga dentro de la vista.
+    const cellWidth = detailedLabels ? 220 : 110;
+    const cellHeight = detailedLabels ? 55 : 80;
+    const occupiedCells = new Set();
 
     st.officialLocalities.filter(place =>
       !regionalNames.has(normalizedLocalityName(place.name)) && visibleArea.contains([place.lat, place.lng])
     ).forEach(place => {
+      const point = st.map.latLngToContainerPoint([place.lat, place.lng]);
+      const cell = `${Math.floor(point.x / cellWidth)}:${Math.floor(point.y / cellHeight)}`;
+      if (occupiedCells.has(cell)) return;
+      occupiedCells.add(cell);
+
       const value = interpolateLocalityValue(layer, place.lat, place.lng, dateStr);
       const text = value === null
         ? '—'
         : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${isWindLayer ? ' km/h' : cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
       const color = localityBadgeColor(layer, value);
-      let icon = localityDotIcon(color);
-
-      if (detailedLabels) {
-        const point = st.map.latLngToContainerPoint([place.lat, place.lng]);
-        const cell = `${Math.floor(point.x / 105)}:${Math.floor(point.y / 24)}`;
-        if (!occupiedLabelCells.has(cell)) {
-          occupiedLabelCells.add(cell);
-          icon = localityBadgeIcon(place.name, text, color);
-        }
-      }
+      const icon = detailedLabels
+        ? localityBadgeIcon(place.name, text, color)
+        : localityDotIcon(color);
       const marker = L.marker([place.lat, place.lng], { icon, alt: `${place.name}: ${text} (interpolado)` });
       marker.on('click', () => onPointSelected(place.lat, place.lng, place.name));
       st.localityMarkersGroup.addLayer(marker);
