@@ -6,6 +6,7 @@
 
   let rafId = null;
   let lastFrameAt = null;
+  let windPausedForZoom = false;
 
   function init() {
     const container = document.getElementById('map-viewport');
@@ -82,6 +83,36 @@
     }
   }
 
+  /**
+   * Viento de referencia regional: promedio vectorial de los puntos de la red.
+   * No depende del punto consultado, por lo que el flujo queda estable al mover
+   * el marcador por el mapa.
+   */
+  function regionalWindReference() {
+    const st = RDCFT.state;
+    const dateStr = st.weatherData?.daily?.time?.[st.selectedDayIndex];
+    if (!dateStr || !st.regionalSamples.length) return null;
+
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+    st.regionalSamples.forEach(spot => {
+      const index = RDCFT.weather.indexFor(spot.hourly, dateStr, st.selectedHour);
+      const speed = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_speed_10m?.[index], null) : null;
+      const direction = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_direction_10m?.[index], null) : null;
+      if (speed === null || direction === null) return;
+      const radians = direction * Math.PI / 180;
+      sumX += Math.cos(radians) * speed;
+      sumY += Math.sin(radians) * speed;
+      count++;
+    });
+    if (!count) return null;
+    return {
+      speed: Math.hypot(sumX, sumY) / count,
+      direction: (Math.atan2(sumY, sumX) * 180 / Math.PI + 360) % 360
+    };
+  }
+
   function resetParticle(p) {
     const { w, h } = viewportSize();
 
@@ -93,12 +124,12 @@
     let speed = 22;
     let dirDeg = 315;
 
-    const sample = RDCFT.weather.currentSample();
-    if (sample) {
+    const regionalWind = regionalWindReference();
+    if (regionalWind) {
       // Velocidad visual en píxeles por segundo, deliberadamente desacoplada
       // de los FPS para que la lectura sea estable y no tape el mapa.
-      speed = Math.max(16, RDCFT.utils.num(sample.wind, 10) * 2.1);
-      dirDeg = RDCFT.utils.num(sample.direction, 315);
+      speed = Math.max(16, regionalWind.speed * 2.1);
+      dirDeg = regionalWind.direction;
     }
 
     // El rumbo meteorológico indica desde DÓNDE sopla el viento, medido en grados
@@ -106,7 +137,9 @@
     // vector de avance es vx = -sen θ, vy = cos θ, equivalente a un ángulo de
     // pantalla de (θ + 90°). La versión anterior usaba (θ + 180°), que dibujaba
     // las partículas giradas 90° respecto del viento real.
-    const angleRad = ((dirDeg + 90) * Math.PI) / 180;
+    // Una leve variación por partícula evita un patrón artificial de líneas
+    // perfectamente paralelas cuando el viento regional viene casi del norte/sur.
+    const angleRad = ((dirDeg + 90 + (Math.random() - 0.5) * 18) * Math.PI) / 180;
     const jitter = 0.8 + Math.random() * 0.4;
 
     p.vx = Math.cos(angleRad) * speed * jitter;
@@ -182,6 +215,15 @@
     const ctx = st.windCtx;
     const { w, h } = viewportSize();
 
+    // Durante el zoom Leaflet escala el mapa por CSS; el canvas se pausa para
+    // que sus estelas no queden estiradas o desfasadas respecto del terreno.
+    if (windPausedForZoom) {
+      ctx.clearRect(0, 0, w, h);
+      lastFrameAt = null;
+      rafId = requestAnimationFrame(animate);
+      return;
+    }
+
     const dt = lastFrameAt === null ? 1 / 60 : RDCFT.utils.clamp((timestamp - lastFrameAt) / 1000, 0, 0.05);
     lastFrameAt = timestamp;
 
@@ -222,5 +264,13 @@
     RDCFT.state.windParticles.forEach(resetParticle);
   }
 
-  RDCFT.canvas = { init, resize, refreshParticles };
+  function setZooming(isZooming) {
+    windPausedForZoom = Boolean(isZooming);
+    const st = RDCFT.state;
+    const { w, h } = viewportSize();
+    st.windCtx?.clearRect(0, 0, w, h);
+    if (!windPausedForZoom) refreshParticles();
+  }
+
+  RDCFT.canvas = { init, resize, refreshParticles, setZooming };
 })(window.RDCFT = window.RDCFT || {});

@@ -40,10 +40,10 @@
   }
 
   // --- Cambios que obligan a repintar todo lo que depende de los datos ---
-  function refreshDerived() {
+  function refreshDerived(resetRegionalWind = false) {
     RDCFT.ui.renderAll();
     RDCFT.map.renderCityBadges(selectPoint);
-    RDCFT.canvas.refreshParticles();
+    if (resetRegionalWind) RDCFT.canvas.refreshParticles();
     RDCFT.markHeatmapDirty();
   }
 
@@ -281,6 +281,7 @@
     try {
       st.regionalSamples = await RDCFT.weather.fetchRegional(RDCFT.config.REGIONAL_SPOTS);
       RDCFT.map.renderCityBadges(selectPoint);
+      RDCFT.canvas.refreshParticles();
       RDCFT.ui.renderLegend();
       RDCFT.markHeatmapDirty();
     } catch (err) {
@@ -292,7 +293,7 @@
   // --- Acciones de interfaz ---
   function selectDay(index) {
     st.selectedDayIndex = index;
-    refreshDerived();
+    refreshDerived(true);
   }
 
   function setHour(hour) {

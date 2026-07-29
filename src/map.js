@@ -75,9 +75,11 @@
     // Los pueblos aparecen al acercarse y se ocultan al alejarse; el pronóstico
     // ya está en memoria, por lo que este ajuste no dispara nuevas peticiones.
     st.map.on('moveend', () => renderCityBadges(onPointSelected));
+    st.map.on('zoomstart', () => RDCFT.canvas.setZooming(true));
     st.map.on('zoomend', () => {
       applyAdaptiveBaseMap();
       renderCityBadges(onPointSelected);
+      RDCFT.canvas.setZooming(false);
     });
     st.map.on('resize', () => RDCFT.canvas.resize());
   }
@@ -428,6 +430,15 @@
     });
   }
 
+  function localityDotIcon(color) {
+    return L.divIcon({
+      className: 'windy-locality-dot',
+      html: `<i class="locality-dot" style="--badge-dot:${color}" aria-hidden="true"></i>`,
+      iconSize: [9, 9],
+      iconAnchor: [4, 4]
+    });
+  }
+
   /**
    * Badges de ciudad al estilo Windy. Cada uno muestra el valor real de su propio
    * pronóstico para el día y la hora seleccionados.
@@ -489,12 +500,17 @@
     return RDCFT.field.interpolate(points, lat, lng);
   }
 
-  /** Etiquetas de todas las localidades INE visibles al acercar el mapa. */
+  /**
+   * Densidad adaptativa: puntos discretos a zoom medio y textos completos sólo
+   * de cerca. Una cuadrícula evita que las etiquetas detalladas se encimen.
+   */
   function renderOfficialLocalityBadges(onPointSelected, layer, cfg, dateStr, isWindLayer) {
     const st = RDCFT.state;
     if (!st.localityMarkersGroup || !st.map || st.map.getZoom() < 11) return;
+    const detailedLabels = st.map.getZoom() >= 13;
     const visibleArea = st.map.getBounds().pad(0.04);
     const regionalNames = new Set(st.regionalSamples.map(spot => normalizedLocalityName(spot.name)));
+    const occupiedLabelCells = new Set();
 
     st.officialLocalities.filter(place =>
       !regionalNames.has(normalizedLocalityName(place.name)) && visibleArea.contains([place.lat, place.lng])
@@ -503,7 +519,17 @@
       const text = value === null
         ? '—'
         : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${isWindLayer ? ' km/h' : cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
-      const icon = localityBadgeIcon(place.name, text, localityBadgeColor(layer, value));
+      const color = localityBadgeColor(layer, value);
+      let icon = localityDotIcon(color);
+
+      if (detailedLabels) {
+        const point = st.map.latLngToContainerPoint([place.lat, place.lng]);
+        const cell = `${Math.floor(point.x / 105)}:${Math.floor(point.y / 24)}`;
+        if (!occupiedLabelCells.has(cell)) {
+          occupiedLabelCells.add(cell);
+          icon = localityBadgeIcon(place.name, text, color);
+        }
+      }
       const marker = L.marker([place.lat, place.lng], { icon, alt: `${place.name}: ${text} (interpolado)` });
       marker.on('click', () => onPointSelected(place.lat, place.lng, place.name));
       st.localityMarkersGroup.addLayer(marker);
