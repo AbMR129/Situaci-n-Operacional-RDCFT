@@ -60,7 +60,9 @@
           <span class="absolute left-8 whitespace-nowrap rounded bg-stone-950/85 px-1.5 py-0.5 text-[9px] font-black text-white shadow">Punto operativo</span>
         </div>
       `,
-      iconSize: [126, 36],
+      // La etiqueta se extiende visualmente hacia la derecha, pero no forma parte
+      // de la caja anclada: así el círculo azul coincide con la coordenada real.
+      iconSize: [36, 36],
       iconAnchor: [18, 18]
     });
 
