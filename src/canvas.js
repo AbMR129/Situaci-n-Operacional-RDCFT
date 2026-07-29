@@ -5,6 +5,7 @@
   'use strict';
 
   let rafId = null;
+  let lastFrameAt = null;
 
   function init() {
     const container = document.getElementById('map-viewport');
@@ -87,14 +88,16 @@
     p.x = Math.random() * w;
     p.y = Math.random() * h;
     p.age = 0;
-    p.maxAge = 40 + Math.random() * 60;
+    p.maxAge = 1.6 + Math.random() * 1.4;
 
-    let speed = 8;
+    let speed = 22;
     let dirDeg = 315;
 
     const sample = RDCFT.weather.currentSample();
     if (sample) {
-      speed = Math.max(2, RDCFT.utils.num(sample.wind, 10) * 0.4);
+      // Velocidad visual en píxeles por segundo, deliberadamente desacoplada
+      // de los FPS para que la lectura sea estable y no tape el mapa.
+      speed = Math.max(16, RDCFT.utils.num(sample.wind, 10) * 2.1);
       dirDeg = RDCFT.utils.num(sample.direction, 315);
     }
 
@@ -122,8 +125,11 @@
     if (!st.heatmapCtx || !st.map || !st.weatherData) return;
 
     const layer = st.activeLayer;
-    // La capa de viento no tiene campo escalar: el canvas queda oculto por opacidad.
     if (!RDCFT.config.LAYERS[layer]) return;
+
+    // Temperatura y humedad se leen mejor sobre el mapa base y en los badges de
+    // ciudad; se omiten los focos difusos que podían tapar el territorio.
+    if (layer === 'temp' || layer === 'humidity') return;
 
     const ctx = st.heatmapCtx;
     const { w, h } = viewportSize();
@@ -159,7 +165,7 @@
     ctx.restore();
   }
 
-  function animate() {
+  function animate(timestamp) {
     const st = RDCFT.state;
     if (!st.windCtx || !st.windCanvas) {
       rafId = requestAnimationFrame(animate);
@@ -176,21 +182,32 @@
     const ctx = st.windCtx;
     const { w, h } = viewportSize();
 
+    const dt = lastFrameAt === null ? 1 / 60 : RDCFT.utils.clamp((timestamp - lastFrameAt) / 1000, 0, 0.05);
+    lastFrameAt = timestamp;
+
+    // Fuera de la capa de viento, el canvas queda limpio para preservar la
+    // lectura de temperatura, humedad y precipitación.
+    if (st.activeLayer !== 'wind') {
+      ctx.clearRect(0, 0, w, h);
+      rafId = requestAnimationFrame(animate);
+      return;
+    }
+
     // Desvanecer las estelas sin acumular fondo negro.
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.07)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'source-over';
 
     ctx.lineWidth = 1.8;
-    ctx.strokeStyle = st.activeLayer === 'wind' ? '#38bdf8' : 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.88)';
     ctx.beginPath();
 
     st.windParticles.forEach(p => {
       ctx.moveTo(p.x, p.y);
-      p.x += p.vx;
-      p.y += p.vy;
-      p.age++;
+      p.x += p.vx * RDCFT.config.WIND_ANIMATION_SPEED * dt;
+      p.y += p.vy * RDCFT.config.WIND_ANIMATION_SPEED * dt;
+      p.age += dt;
       ctx.lineTo(p.x, p.y);
 
       if (p.x < 0 || p.x > w || p.y < 0 || p.y > h || p.age > p.maxAge) resetParticle(p);

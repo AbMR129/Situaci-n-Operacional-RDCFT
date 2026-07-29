@@ -254,40 +254,76 @@
       .toast { animation: none; }
       .day-chip-active { transform: none; }
     }
+
+    /* El panel de detalle se convierte en una bandeja deslizable en pantallas
+       angostas: así el mapa sigue siendo la superficie principal de trabajo. */
+    @media (max-width: 1023px) {
+      #details-sidebar {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: min(72dvh, 680px);
+        transform: translateY(calc(100% - 56px));
+        border-radius: 16px 16px 0 0;
+        border-left: 0;
+        border-top: 1px solid rgb(214 211 209);
+        transition: transform 220ms ease-out;
+        z-index: 45;
+      }
+      html.dark #details-sidebar { border-top-color: #292524; }
+      #details-sidebar.is-open { transform: translateY(0); }
+      #details-sidebar .details-handle { display: flex; }
+      #map-viewport { min-width: 0; }
+    }
+
+    @media (min-width: 1024px) {
+      #details-sidebar .details-handle,
+      #ui-details-toggle { display: none; }
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: 3px solid rgba(249, 115, 22, 0.6);
+      outline-offset: 2px;
+    }
 </style>
 </head>
 <body class="h-full font-sans transition-colors duration-200">
 
 <!-- BEGIN: TopNavBar -->
-<header class="fixed top-0 left-0 right-0 h-16 bg-industrial-corteza dark:bg-industrial-corteza dark:border-stone-800 bg-white border-b border-stone-200 flex items-center justify-between px-6 z-50 shadow-md transition-colors" data-purpose="main-header">
-  <div class="flex items-center gap-8">
-    <div class="flex items-center gap-2">
+<header class="fixed top-0 left-0 right-0 h-16 bg-industrial-corteza dark:bg-industrial-corteza dark:border-stone-800 bg-white border-b border-stone-200 flex items-center gap-3 px-3 sm:px-4 lg:px-6 z-50 shadow-md transition-colors" data-purpose="main-header">
+  <div class="flex items-center gap-3 lg:gap-8 min-w-0 flex-1">
+    <div class="hidden lg:flex items-center gap-2 shrink-0">
       <span class="text-industrial-naranja italic font-black text-xl tracking-tighter">Situación Operacional</span>
     </div>
     <!-- Search within Header -->
-    <div class="relative w-80 md:w-96 group">
-      <label class="sr-only" for="ui-search-global">Buscar lugar o comuna en Chile</label>
+    <div class="relative min-w-0 w-full max-w-xl group">
+      <label class="sr-only" for="ui-search-global">Buscar lugar, comuna o predio por nombre o ID</label>
       <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-stone-400" aria-hidden="true">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
       </span>
-      <input id="ui-search-global" data-role="search" class="bg-stone-100 dark:bg-industrial-madera border-none text-sm rounded-industrial py-2 pl-10 pr-4 w-full focus:ring-2 focus:ring-industrial-naranja text-stone-800 dark:text-stone-200 placeholder-stone-400" placeholder="Buscar lugar o comuna en Chile..." type="search"/>
+      <input id="ui-search-global" data-role="search" class="bg-stone-100 dark:bg-industrial-madera border-none text-sm rounded-industrial py-2 pl-10 pr-4 w-full focus:ring-2 focus:ring-industrial-naranja text-stone-800 dark:text-stone-200 placeholder-stone-400" placeholder="Buscar lugar, comuna o predio (ID/nombre)..." type="search"/>
+      <div id="ui-search-results" class="hidden absolute top-full left-0 right-0 mt-2 max-h-[60dvh] overflow-y-auto rounded-industrial border border-stone-300 dark:border-stone-700 bg-white dark:bg-industrial-madera shadow-2xl p-2" role="listbox" aria-label="Resultados de búsqueda"></div>
     </div>
   </div>
 
-  <div class="flex items-center gap-3 md:gap-4">
+  <div class="flex items-center gap-2 sm:gap-3 shrink-0">
     <!-- Day/Night Mode Toggle -->
     <button id="ui-theme-toggle" type="button" class="flex items-center gap-2 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 px-3 py-2 rounded-industrial text-xs font-bold transition-all active:scale-95 shadow-sm" title="Cambiar Tema" aria-label="Cambiar tema">
       <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
-      <span class="text-xs font-bold hidden md:inline">Modo Noche</span>
+      <span class="text-xs font-bold hidden xl:inline">Modo Noche</span>
     </button>
 
     <!-- PDF Export Button -->
     <button id="ui-btn-pdf" type="button" class="flex items-center gap-2 bg-industrial-naranja hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-industrial text-sm transition-all active:scale-95 shadow-md">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
-      Descargar PDF
+      <span class="hidden sm:inline">Descargar PDF</span>
     </button>
 
-    <div class="flex items-center gap-2 border-l border-stone-300 dark:border-stone-700 pl-3">
+    <div class="hidden md:flex items-center gap-2 border-l border-stone-300 dark:border-stone-700 pl-3">
       <div class="w-8 h-8 rounded-full bg-industrial-calipso flex items-center justify-center text-white font-bold text-xs shadow" title="Usuario">UA</div>
     </div>
   </div>
@@ -297,19 +333,52 @@
 <!-- Avisos no bloqueantes -->
 <div id="ui-toasts" aria-live="polite" aria-atomic="false"></div>
 
+<!-- Comparador bajo demanda: no ocupa espacio del detalle principal. -->
+<div id="ui-comparison-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/70 backdrop-blur-sm p-4" aria-hidden="true">
+  <section class="w-full max-w-3xl max-h-[90dvh] overflow-y-auto rounded-industrial border border-stone-300 dark:border-stone-700 bg-white dark:bg-industrial-madera shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="ui-comparison-title">
+    <div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-stone-200 dark:border-stone-800 bg-white/95 dark:bg-industrial-madera/95 backdrop-blur p-5">
+      <div>
+        <h2 id="ui-comparison-title" class="text-base font-black text-stone-900 dark:text-white">Comparar ubicaciones</h2>
+        <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">Selecciona dos puntos para la misma fecha y hora.</p>
+      </div>
+      <button id="ui-comparison-close" type="button" class="w-9 h-9 shrink-0 rounded-industrial border border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800" aria-label="Cerrar comparador">×</button>
+    </div>
+    <div class="p-5">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs uppercase font-black tracking-wider text-stone-500 dark:text-stone-400 mb-2" for="ui-select-comparison-a">Ubicación A</label>
+          <select id="ui-select-comparison-a" class="w-full bg-stone-100 dark:bg-stone-900 border-stone-300 dark:border-stone-700 text-stone-900 dark:text-white rounded-industrial font-bold py-2.5 px-3 text-sm focus:ring-2 focus:ring-industrial-naranja"><option value="">Elegir ubicación…</option></select>
+          <div class="mt-2 flex gap-2"><input id="ui-search-comparison-a" type="search" class="min-w-0 w-full bg-stone-100 dark:bg-stone-900 border-stone-300 dark:border-stone-700 text-stone-900 dark:text-white rounded-industrial py-2.5 px-3 text-xs focus:ring-2 focus:ring-industrial-naranja" placeholder="Buscar en el mapa…" aria-label="Buscar ubicación A en el mapa"/><button id="ui-search-comparison-a-button" type="button" class="shrink-0 rounded-industrial border border-industrial-naranja/40 px-3 text-xs font-black text-orange-700 dark:text-industrial-naranja hover:bg-orange-500/10">Buscar</button></div>
+          <button id="ui-pick-comparison-a" type="button" class="mt-2 text-xs font-black text-orange-700 dark:text-industrial-naranja hover:underline">Elegir sector en el mapa</button>
+          <p id="ui-search-comparison-a-status" class="mt-1 min-h-4 text-[10px] font-bold text-stone-500 dark:text-stone-400" aria-live="polite"></p>
+        </div>
+        <div>
+          <label class="block text-xs uppercase font-black tracking-wider text-stone-500 dark:text-stone-400 mb-2" for="ui-select-comparison-b">Ubicación B</label>
+          <select id="ui-select-comparison-b" class="w-full bg-stone-100 dark:bg-stone-900 border-stone-300 dark:border-stone-700 text-stone-900 dark:text-white rounded-industrial font-bold py-2.5 px-3 text-sm focus:ring-2 focus:ring-industrial-naranja"><option value="">Elegir ubicación…</option></select>
+          <div class="mt-2 flex gap-2"><input id="ui-search-comparison-b" type="search" class="min-w-0 w-full bg-stone-100 dark:bg-stone-900 border-stone-300 dark:border-stone-700 text-stone-900 dark:text-white rounded-industrial py-2.5 px-3 text-xs focus:ring-2 focus:ring-industrial-naranja" placeholder="Buscar en el mapa…" aria-label="Buscar ubicación B en el mapa"/><button id="ui-search-comparison-b-button" type="button" class="shrink-0 rounded-industrial border border-industrial-naranja/40 px-3 text-xs font-black text-orange-700 dark:text-industrial-naranja hover:bg-orange-500/10">Buscar</button></div>
+          <button id="ui-pick-comparison-b" type="button" class="mt-2 text-xs font-black text-orange-700 dark:text-industrial-naranja hover:underline">Elegir sector en el mapa</button>
+          <p id="ui-search-comparison-b-status" class="mt-1 min-h-4 text-[10px] font-bold text-stone-500 dark:text-stone-400" aria-live="polite"></p>
+        </div>
+      </div>
+      <button id="ui-run-comparison" type="button" class="mt-5 w-full min-h-11 rounded-industrial bg-industrial-naranja hover:bg-orange-600 disabled:bg-stone-400 disabled:cursor-not-allowed text-white text-sm font-black transition-colors" disabled>Comparar ubicaciones</button>
+      <div id="ui-comparison-card" class="mt-5" aria-live="polite"></div>
+    </div>
+  </section>
+</div>
+
 <!-- Main Container -->
 <div class="flex h-screen pt-16 overflow-hidden">
 
   <!-- BEGIN: SideNavBar (Slim Operational) -->
-  <nav class="w-20 bg-stone-100 dark:bg-industrial-corteza border-r border-stone-200 dark:border-stone-800 flex flex-col items-center py-6 gap-8 z-40 transition-colors" data-purpose="sidebar-navigation" aria-label="Navegación principal">
+  <nav class="hidden lg:flex w-20 bg-stone-100 dark:bg-industrial-corteza border-r border-stone-200 dark:border-stone-800 flex-col items-center py-6 gap-8 z-40 transition-colors" data-purpose="sidebar-navigation" aria-label="Navegación principal">
     <div class="flex flex-col gap-6">
-      <button type="button" class="p-3 bg-stone-200 dark:bg-industrial-madera text-industrial-naranja rounded-industrial border-l-4 border-industrial-naranja shadow-sm" title="Vista de Mapa" aria-label="Vista de mapa" aria-current="page">
+      <button id="ui-nav-map" type="button" class="p-3 bg-stone-200 dark:bg-industrial-madera text-industrial-naranja rounded-industrial border-l-4 border-industrial-naranja shadow-sm" title="Vista de Mapa" aria-label="Vista de mapa" aria-current="page">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
       </button>
-      <button type="button" class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors" title="Meteorología" aria-label="Meteorología">
+      <button id="ui-nav-meteorology" type="button" class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors" title="Mostrar temperatura" aria-label="Mostrar temperatura">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
       </button>
-      <button type="button" class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors" title="Resumen" aria-label="Resumen">
+      <button id="ui-nav-summary" type="button" class="p-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors" title="Abrir resumen operativo" aria-label="Abrir resumen operativo">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
       </button>
     </div>
@@ -320,14 +389,14 @@
   <!-- END: SideNavBar -->
 
   <!-- BEGIN: Main Content Area (Map Viewport) -->
-  <main id="map-viewport" class="flex-grow relative overflow-hidden" data-purpose="map-viewport">
+  <main id="map-viewport" class="flex-grow min-w-0 relative overflow-hidden" data-purpose="map-viewport">
 
     <!-- Sub-header legend -->
     <!-- La subcabecera es decorativa salvo su buscador. Va con `pointer-events-none`
          para que su franja no intercepte clics: al crecer de alto (títulos que se
          parten en dos o tres líneas según el ancho) llegaba a rozar las barras de
          herramientas de abajo y podía comerse la pulsación. -->
-    <div class="absolute top-0 left-0 right-0 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur px-6 py-3 flex items-center justify-between border-b border-stone-200 dark:border-stone-800 z-30 shadow transition-colors pointer-events-none">
+    <div class="absolute top-0 left-0 right-0 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur px-4 lg:px-6 py-3 flex items-center border-b border-stone-200 dark:border-stone-800 z-30 shadow transition-colors pointer-events-none">
       <!-- `min-w-0` + `truncate` evitan que el título se parta en varias líneas: con la
            barra lateral fija de 450 px el visor baja de 500 px de ancho y la subcabecera
            llegaba a 145 px de alto, tapando las barras de herramientas de abajo.
@@ -341,25 +410,15 @@
           <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-industrial-rojo shadow" aria-hidden="true"></span> No favorable</span>
         </div>
       </div>
-      <div class="relative w-36 lg:w-56 xl:w-64 shrink-0 pointer-events-auto">
-        <label class="sr-only" for="ui-search-map">Buscar paisaje o comuna</label>
-        <input id="ui-search-map" data-role="search" class="w-full bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-xs py-1.5 px-3 rounded-industrial text-stone-800 dark:text-stone-200 focus:ring-1 focus:ring-industrial-naranja" placeholder="Buscar paisaje o comuna..." type="search"/>
-      </div>
     </div>
 
     <!-- Map Base -->
     <div id="map-container" class="w-full h-full relative z-10"></div>
 
-    <!-- Map Type Switcher Toolbar (Satélite / Oscuro / Claro) -->
-    <div class="absolute top-16 left-4 z-40 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Tipo de mapa base">
-      <button type="button" data-maptype="satellite" title="Satélite" aria-label="Mapa satélite" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🛰️</span> <span class="hidden xl:inline">Satélite</span>
-      </button>
-      <button type="button" data-maptype="dark" title="Mapa oscuro" aria-label="Mapa oscuro" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">🌙</span> <span class="hidden xl:inline">Mapa Oscuro</span>
-      </button>
-      <button type="button" data-maptype="light" title="Mapa claro" aria-label="Mapa claro" class="map-type-btn chip-inactive px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5">
-        <span aria-hidden="true">☀️</span> <span class="hidden xl:inline">Mapa Claro</span>
+    <!-- Control de capa predial; el mapa base se adapta automáticamente al zoom. -->
+    <div class="absolute top-16 left-4 z-40 flex gap-1 bg-white/90 dark:bg-industrial-corteza/90 backdrop-blur p-1 rounded-industrial border border-stone-300 dark:border-stone-800 shadow-xl transition-colors" role="group" aria-label="Capa predial">
+      <button id="ui-parcels-toggle" type="button" title="Mostrar predios" aria-label="Mostrar predios" aria-pressed="false" class="px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 chip-inactive">
+        <span aria-hidden="true">▱</span> <span class="hidden xl:inline">Predios</span>
       </button>
     </div>
 
@@ -399,6 +458,10 @@
       </div>
     </div>
 
+    <button id="ui-details-toggle" type="button" class="absolute right-4 bottom-4 z-40 min-h-11 px-4 bg-industrial-naranja hover:bg-orange-600 text-white text-sm font-black rounded-industrial shadow-xl transition-colors" aria-controls="details-sidebar" aria-expanded="false">
+      Ver detalle operativo
+    </button>
+
     <!-- Barra inferior: fecha, hora y leyenda en una única fila.
          Antes eran tres cajas posicionadas por separado (bottom-6 a izquierda, centro
          y derecha) y en pantallas de portátil se solapaban: a 1366x768 la leyenda
@@ -420,19 +483,16 @@
       <div id="ui-color-legend" class="hidden pointer-events-auto shrink-0 bg-white/95 dark:bg-industrial-corteza/95 backdrop-blur border border-stone-300 dark:border-stone-700 px-4 py-3 rounded-industrial shadow-2xl transition-colors"></div>
     </div>
 
-    <!-- Loading Indicator -->
-    <div id="ui-loader" class="hidden absolute inset-0 bg-stone-950/60 backdrop-blur-sm z-50 flex items-center justify-center" role="status" aria-live="polite">
-      <div class="bg-white dark:bg-industrial-corteza border border-stone-300 dark:border-stone-700 p-6 rounded-industrial shadow-2xl flex flex-col items-center gap-3">
-        <div class="w-10 h-10 border-4 border-industrial-naranja border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
-        <p class="text-sm font-bold text-stone-800 dark:text-stone-200">Consultando API de meteorología en tiempo real...</p>
-      </div>
-    </div>
-
   </main>
   <!-- END: Main Content Area -->
 
   <!-- BEGIN: Data Sidebar -->
-  <aside class="w-[450px] bg-white dark:bg-industrial-madera border-l border-stone-200 dark:border-stone-800 flex flex-col h-full overflow-hidden z-40 shadow-2xl transition-colors" data-purpose="details-sidebar" aria-label="Detalle del pronóstico">
+  <aside id="details-sidebar" class="w-[410px] xl:w-[450px] bg-white dark:bg-industrial-madera border-l border-stone-200 dark:border-stone-800 flex flex-col h-full overflow-hidden z-40 shadow-2xl transition-colors" data-purpose="details-sidebar" aria-label="Detalle del pronóstico">
+
+    <button id="ui-details-handle" type="button" class="details-handle hidden h-14 shrink-0 items-center justify-between px-5 bg-stone-50 dark:bg-industrial-corteza/70 border-b border-stone-200 dark:border-stone-800 text-sm font-black text-stone-800 dark:text-stone-100" aria-controls="details-sidebar" aria-expanded="false">
+      <span>Detalle operativo</span>
+      <span aria-hidden="true">⌃</span>
+    </button>
 
     <!-- Date Selector -->
     <div class="p-4 border-b border-stone-200 dark:border-stone-800 flex items-center gap-3 bg-stone-50 dark:bg-industrial-corteza/40">
@@ -459,6 +519,15 @@
             Cargando...
           </span>
         </div>
+
+        <button id="ui-comparison-open" type="button" class="w-full flex items-center justify-between rounded-industrial border border-stone-300 dark:border-stone-700 bg-white/70 dark:bg-stone-900/40 px-4 py-3 text-left hover:border-industrial-naranja/70 transition-colors" aria-haspopup="dialog" aria-controls="ui-comparison-modal">
+          <span><span class="block text-xs font-black text-stone-800 dark:text-white">Comparar ubicaciones</span><span class="mt-0.5 block text-[10px] text-stone-500 dark:text-stone-400">Contrasta dos puntos sin salir del mapa.</span></span>
+          <span class="text-industrial-naranja text-lg" aria-hidden="true">↔</span>
+        </button>
+
+        <section id="ui-operational-summary" class="rounded-industrial border border-stone-300 dark:border-stone-700 bg-stone-100/80 dark:bg-stone-900/50 p-4" aria-live="polite">
+          <p class="text-xs text-stone-500 dark:text-stone-400">Preparando resumen operativo...</p>
+        </section>
       </div>
 
       <!-- Weather Timeline Cards Container -->

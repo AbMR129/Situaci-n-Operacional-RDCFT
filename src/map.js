@@ -7,11 +7,12 @@
 
   function init(onPointSelected) {
     const st = RDCFT.state;
+    st.onPointSelected = onPointSelected;
 
     st.map = L.map('map-container', {
       zoomControl: false,
       attributionControl: true
-    }).setView([st.coords.lat, st.coords.lng], 10);
+    }).setView([st.coords.lat, st.coords.lng], 9);
 
     const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
@@ -66,10 +67,17 @@
     // evento `move`, lo que lo borraba y hacía desaparecer las estelas de viento
     // durante el arrastre.
     st.map.on('move zoom', RDCFT.markHeatmapDirty);
+    // Los pueblos aparecen al acercarse y se ocultan al alejarse; el pronóstico
+    // ya está en memoria, por lo que este ajuste no dispara nuevas peticiones.
+    st.map.on('moveend', () => renderCityBadges(onPointSelected));
+    st.map.on('zoomend', () => {
+      applyAdaptiveBaseMap();
+      renderCityBadges(onPointSelected);
+    });
     st.map.on('resize', () => RDCFT.canvas.resize());
   }
 
-  function setTileType(type) {
+  function setTileType(type, isManual = false) {
     const st = RDCFT.state;
     if (!st.map || !st.tileLayers[type]) return;
 
@@ -79,6 +87,7 @@
 
     st.tileLayers[type].addTo(st.map);
     st.mapTileType = type;
+    if (isManual) st.mapTypeManual = true;
 
     applyHeatmapBlend();
     RDCFT.markHeatmapDirty();
@@ -89,6 +98,218 @@
       btn.classList.toggle('chip-inactive', !active);
       btn.setAttribute('aria-pressed', String(active));
     });
+  }
+
+  /**
+   * Vista regional en oscuro y detalle territorial en satélite. Los dos
+   * umbrales evitan alternancias al moverse entre los zooms 8 y 10. No modifica
+   * el centro ni el nivel de zoom, sólo la imagen base.
+   */
+  function applyAdaptiveBaseMap() {
+    const st = RDCFT.state;
+    if (!st.map || st.mapTypeManual) return;
+
+    const zoom = st.map.getZoom();
+    if (zoom >= 10 && st.mapTileType !== 'satellite') {
+      setTileType('satellite');
+    } else if (zoom <= 8 && st.mapTileType !== 'dark') {
+      setTileType('dark');
+    }
+  }
+
+  function normalizeParcelText(value) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-CL')
+      .trim();
+  }
+
+  /** Área geodésica aproximada; suficiente para la ficha informativa del predio. */
+  function ringArea(ring) {
+    if (!Array.isArray(ring) || ring.length < 3) return 0;
+    const radians = Math.PI / 180;
+    const radius = 6378137;
+    let total = 0;
+    for (let index = 0; index < ring.length; index++) {
+      const current = ring[index];
+      const next = ring[(index + 1) % ring.length];
+      total += (next[0] - current[0]) * radians * (2 + Math.sin(current[1] * radians) + Math.sin(next[1] * radians));
+    }
+    return Math.abs(total * radius * radius / 2);
+  }
+
+  function featureAreaHectares(feature) {
+    const geometry = feature?.geometry;
+    if (!geometry) return null;
+    const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+      : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+    const squareMeters = polygons.reduce((sum, polygon) => {
+      const exterior = ringArea(polygon[0]);
+      const holes = polygon.slice(1).reduce((holeSum, ring) => holeSum + ringArea(ring), 0);
+      return sum + Math.max(0, exterior - holes);
+    }, 0);
+    return squareMeters ? squareMeters / 10000 : null;
+  }
+
+  function parcelPopupHtml(feature, center) {
+    const properties = feature.properties || {};
+    const sample = RDCFT.weather.currentSample();
+    const evaluation = sample ? RDCFT.rdcft.evaluate(sample) : null;
+    const area = featureAreaHectares(feature);
+    const metric = (label, value) => `<span style="color:#78716c;">${label}</span><strong style="color:#1c1917;">${value}</strong>`;
+    const rounded = (value, unit) => value === null || value === undefined ? '—' : `${Math.round(value)}${unit}`;
+    const weather = sample
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;margin-top:10px;font-size:12px;">
+          ${metric('Temperatura', rounded(sample.temp, ' °C'))}
+          ${metric('Humedad', rounded(sample.humidity, ' %'))}
+          ${metric('Viento', rounded(sample.wind, ' km/h'))}
+          ${metric('Estado', evaluation?.status || 'Sin evaluar')}
+        </div>`
+      : '<p style="margin:8px 0 0;color:#78716c;font-size:12px;">Consultando condiciones meteorológicas…</p>';
+
+    return `<div style="font-family:'Hanken Grotesk',sans-serif;min-width:230px;line-height:1.35;">
+      <p style="margin:0;color:#f97316;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;">Ficha predial</p>
+      <strong style="display:block;margin-top:3px;color:#1c1917;font-size:14px;">${RDCFT.utils.escapeHtml(properties.nombre || 'Predio sin nombre')}</strong>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;margin-top:9px;font-size:12px;">
+        ${metric('ID predio', RDCFT.utils.escapeHtml(properties.id || '—'))}
+        ${metric('Superficie', area === null ? '—' : `${area.toFixed(area >= 100 ? 0 : 1)} ha`)}
+        ${metric('Latitud', center.lat.toFixed(5))}
+        ${metric('Longitud', center.lng.toFixed(5))}
+      </div>
+      ${weather}
+    </div>`;
+  }
+
+  function selectParcelFeature(feature) {
+    const st = RDCFT.state;
+    if (!st.map || !feature) return;
+    if (st.parcelSelectionLayer && st.map.hasLayer(st.parcelSelectionLayer)) st.map.removeLayer(st.parcelSelectionLayer);
+
+    st.parcelSelectionLayer = L.geoJSON(feature, {
+      style: { color: '#facc15', weight: 3, opacity: 1, fillColor: '#f97316', fillOpacity: 0.22 },
+      onEachFeature(_, layer) {
+        layer.on('click', event => L.DomEvent.stopPropagation(event.originalEvent));
+      }
+    }).addTo(st.map);
+
+    const bounds = st.parcelSelectionLayer.getBounds();
+    if (!bounds.isValid()) return Promise.resolve();
+    const center = bounds.getCenter();
+    st.map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
+    st.parcelSelectionLayer.bindPopup(parcelPopupHtml(feature, center)).openPopup(center);
+
+    const name = feature.properties?.nombre || `Predio ${feature.properties?.id || ''}`.trim();
+    const forecastRequest = Promise.resolve(st.onPointSelected?.(center.lat, center.lng, name));
+    forecastRequest.then(() => {
+      if (st.parcelSelectionLayer) st.parcelSelectionLayer.setPopupContent(parcelPopupHtml(feature, center)).openPopup(center);
+    });
+    return forecastRequest;
+  }
+
+  async function loadParcelsData() {
+    const st = RDCFT.state;
+    if (st.parcelsData) return st.parcelsData;
+    const response = await fetch('Data/predios.geojson');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    st.parcelsData = await response.json();
+    return st.parcelsData;
+  }
+
+  async function findParcel(query) {
+    const term = normalizeParcelText(query);
+    if (!term) return null;
+    const data = await loadParcelsData();
+    const features = data.features || [];
+    const matches = features.filter(feature => {
+      const properties = feature.properties || {};
+      return normalizeParcelText(properties.id).includes(term) || normalizeParcelText(properties.nombre).includes(term);
+    });
+    if (!matches.length) return null;
+
+    const exact = matches.find(feature => {
+      const properties = feature.properties || {};
+      return normalizeParcelText(properties.id) === term || normalizeParcelText(properties.nombre) === term;
+    });
+    return { feature: exact || matches[0], count: matches.length };
+  }
+
+  /** Coincidencias breves para el menú del buscador, sin seleccionar un predio. */
+  async function searchParcels(query, limit = 6) {
+    const term = normalizeParcelText(query);
+    if (term.length < 2) return [];
+    const data = await loadParcelsData();
+    const matches = (data.features || []).filter(feature => {
+      const properties = feature.properties || {};
+      return normalizeParcelText(properties.id).includes(term) || normalizeParcelText(properties.nombre).includes(term);
+    });
+    return matches.sort((a, b) => {
+      const aProps = a.properties || {};
+      const bProps = b.properties || {};
+      const aExact = normalizeParcelText(aProps.id) === term || normalizeParcelText(aProps.nombre) === term;
+      const bExact = normalizeParcelText(bProps.id) === term || normalizeParcelText(bProps.nombre) === term;
+      return Number(bExact) - Number(aExact);
+    }).slice(0, limit);
+  }
+
+  function updateParcelsButton(active, loading) {
+    const button = document.getElementById('ui-parcels-toggle');
+    if (!button) return;
+    button.disabled = Boolean(loading);
+    button.classList.toggle('chip-active', Boolean(active));
+    button.classList.toggle('chip-inactive', !active);
+    button.setAttribute('aria-pressed', String(Boolean(active)));
+    button.title = active ? 'Ocultar predios' : 'Mostrar predios';
+    button.setAttribute('aria-label', button.title);
+  }
+
+  /** Carga los predios sólo cuando se solicitan, para no pesar el arranque. */
+  async function toggleParcels() {
+    const st = RDCFT.state;
+    if (!st.map || st.parcelsLoading) return;
+
+    if (st.parcelsLayer) {
+      const visible = st.map.hasLayer(st.parcelsLayer);
+      if (visible) st.map.removeLayer(st.parcelsLayer);
+      else st.parcelsLayer.addTo(st.map);
+      updateParcelsButton(!visible, false);
+      return;
+    }
+
+    st.parcelsLoading = true;
+    updateParcelsButton(false, true);
+    try {
+      const data = await loadParcelsData();
+      st.parcelsLayer = L.geoJSON(data, {
+        style: {
+          color: '#f97316',
+          weight: 1,
+          opacity: 0.8,
+          fillColor: '#f97316',
+          fillOpacity: 0.05
+        },
+        onEachFeature(feature, layer) {
+          const properties = feature.properties || {};
+          layer.bindPopup(`
+            <div style="font-family: 'Hanken Grotesk', sans-serif; min-width: 160px;">
+              <strong>${RDCFT.utils.escapeHtml(properties.nombre || 'Predio sin nombre')}</strong><br>
+              <span style="font-size: 12px; color: #57534e;">ID predio: ${RDCFT.utils.escapeHtml(properties.id || '—')}</span>
+            </div>
+          `);
+          layer.on('click', event => {
+            L.DomEvent.stopPropagation(event.originalEvent);
+            selectParcelFeature(feature);
+          });
+        }
+      }).addTo(st.map);
+      updateParcelsButton(true, false);
+    } catch (err) {
+      console.error('No se pudo cargar la capa de predios:', err);
+      RDCFT.ui.toast('No se pudo cargar la capa de predios. Abra el proyecto desde un servidor local.', 'warn');
+      updateParcelsButton(false, false);
+    } finally {
+      st.parcelsLoading = false;
+    }
   }
 
   /**
@@ -122,16 +343,32 @@
     if (!st.cityMarkersGroup) return;
     st.cityMarkersGroup.clearLayers();
 
-    // La capa de viento no tiene escala de campo; en ese caso los badges siguen
-    // mostrando temperatura, que es la referencia más útil.
-    const layer = RDCFT.config.LAYERS[st.activeLayer] ? st.activeLayer : 'temp';
+    const layer = st.activeLayer;
+    const isWindLayer = layer === 'wind';
     const cfg = RDCFT.config.LAYERS[layer];
+    const dateStr = st.weatherData?.daily?.time?.[st.selectedDayIndex];
 
-    st.regionalSamples.forEach(spot => {
-      const value = RDCFT.field.sampleValue(spot, layer);
-      const text = value === null
-        ? '—'
-        : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
+    const zoom = st.map?.getZoom() ?? 0;
+    const visibleArea = st.map?.getBounds()?.pad(0.12);
+    st.regionalSamples.filter(spot =>
+      zoom >= (spot.minZoom ?? 7) && (!visibleArea || visibleArea.contains([spot.lat, spot.lng]))
+    ).forEach(spot => {
+      let value;
+      let text;
+
+      if (isWindLayer) {
+        const index = dateStr ? RDCFT.weather.indexFor(spot.hourly, dateStr, st.selectedHour) : -1;
+        value = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_speed_10m?.[index], null) : null;
+        const direction = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_direction_10m?.[index], null) : null;
+        text = value === null
+          ? '—'
+          : `${direction === null ? '' : RDCFT.utils.windArrow(direction) + ' '}${Math.round(value)} km/h`;
+      } else {
+        value = RDCFT.field.sampleValue(spot, layer);
+        text = value === null
+          ? '—'
+          : `${layer === 'rain' ? value.toFixed(1) : Math.round(value)}${cfg.unit === '°C' ? '°' : ' ' + cfg.unit}`;
+      }
 
       const icon = L.divIcon({
         className: 'windy-city-badge',
@@ -158,5 +395,5 @@
     if (RDCFT.state.marker) RDCFT.state.marker.setLatLng([lat, lng]);
   }
 
-  RDCFT.map = { init, setTileType, applyHeatmapBlend, renderCityBadges, moveMarker };
+  RDCFT.map = { init, setTileType, toggleParcels, findParcel, searchParcels, selectParcelFeature, applyHeatmapBlend, renderCityBadges, moveMarker };
 })(window.RDCFT = window.RDCFT || {});

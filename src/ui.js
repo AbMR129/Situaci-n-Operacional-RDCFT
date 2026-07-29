@@ -29,6 +29,8 @@
   function renderAll() {
     renderDateSelector();
     renderSidebarCards();
+    renderOperationalSummary();
+    renderComparison();
     renderLegend();
     updateLayerButtons();
     updateDateIndicator();
@@ -167,6 +169,118 @@
     if (sidebarDate) sidebarDate.textContent = RDCFT.utils.formatLongDate(dateStr);
   }
 
+  /** Resumen para decidir antes de entrar al detalle horario. */
+  function renderOperationalSummary() {
+    const el = $('ui-operational-summary');
+    const dateStr = selectedDateStr();
+    if (!el || !dateStr) return;
+
+    const rows = dayEvaluations(dateStr).filter(row => row.sample && row.evaluation.score >= 0);
+    if (!rows.length) {
+      el.innerHTML = '<p class="text-xs text-stone-500 dark:text-stone-400">Sin datos suficientes para resumir la jornada.</p>';
+      return;
+    }
+
+    const worst = RDCFT.rdcft.worst(rows.map(row => row.evaluation));
+    const best = rows.reduce((current, row) => (
+      row.evaluation.score < current.evaluation.score ? row : current
+    ), rows[0]);
+    const bestHour = `${String(best.hour).padStart(2, '0')}:00`;
+    const restriction = worst.reasons?.[0] || 'Sin restricciones dentro de la ventana operacional.';
+    const hourButtons = rows.map(row => {
+      const hour = String(row.hour).padStart(2, '0');
+      const selected = row.hour === RDCFT.state.selectedHour;
+      return `<button type="button" data-summary-hour="${row.hour}" class="min-w-10 h-9 rounded-industrial border text-[10px] font-black transition-colors ${selected ? 'bg-industrial-naranja border-industrial-naranja text-white' : `${row.evaluation.cardClass} border-current/20 hover:bg-stone-200 dark:hover:bg-stone-800`}" aria-pressed="${selected}" aria-label="Mostrar ${hour}:00, ${RDCFT.utils.escapeHtml(row.evaluation.status)}">${hour}</button>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-[10px] uppercase tracking-widest font-black text-stone-500 dark:text-stone-400">Resumen operacional</p>
+          <p class="mt-1 text-sm font-black text-stone-900 dark:text-white">Mejor ventana: ${bestHour}</p>
+        </div>
+        <span class="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${worst.badgeClass}">${RDCFT.utils.escapeHtml(worst.status)}</span>
+      </div>
+      <p class="mt-3 pt-3 border-t border-stone-300/80 dark:border-stone-700 text-xs leading-relaxed text-stone-700 dark:text-stone-300">
+        <span class="font-bold">${worst.score === 0 ? 'Jornada apta:' : 'Principal restricción:'}</span> ${RDCFT.utils.escapeHtml(restriction)}
+      </p>
+      <div class="mt-3 flex items-center justify-between gap-2">
+        <span class="text-[10px] uppercase tracking-wider font-bold text-stone-500 dark:text-stone-400">Horas</span>
+        <div class="flex gap-1" role="group" aria-label="Elegir hora operacional">${hourButtons}</div>
+      </div>
+    `;
+  }
+
+  /** Compara dos ubicaciones elegidas explícitamente por la persona usuaria. */
+  function renderComparison() {
+    const el = $('ui-comparison-card');
+    const comparison = RDCFT.state.comparison;
+    const dateStr = selectedDateStr();
+    if (!el) return;
+
+    const pointA = comparison.pointA;
+    const pointB = comparison.pointB;
+    if (!pointA || !pointB) {
+      el.innerHTML = '<p class="text-xs text-stone-500 dark:text-stone-400">Selecciona las dos ubicaciones y confirma la comparación.</p>';
+      return;
+    }
+    if (comparison.isLoading) {
+      el.innerHTML = '<p class="text-xs text-stone-500 dark:text-stone-400">Consultando pronósticos para ambas ubicaciones…</p>';
+      return;
+    }
+    if (!pointA.weatherData?.hourly || !pointB.weatherData?.hourly || !dateStr) {
+      el.innerHTML = '<p class="text-xs text-rose-600 dark:text-rose-400">No fue posible cargar el pronóstico de ambas ubicaciones.</p>';
+      return;
+    }
+
+    const sampleFor = (point, hour) => RDCFT.weather.sampleAt(
+      point.weatherData.hourly,
+      RDCFT.weather.indexFor(point.weatherData.hourly, dateStr, hour)
+    );
+    const sampleA = sampleFor(pointA, RDCFT.state.selectedHour);
+    const sampleB = sampleFor(pointB, RDCFT.state.selectedHour);
+    const evaluationA = RDCFT.rdcft.evaluate(sampleA);
+    const evaluationB = RDCFT.rdcft.evaluate(sampleB);
+    const value = (number, unit) => number === null || number === undefined ? '—' : `${Math.round(number)}${unit}`;
+    const metric = (label, a, b, unit) => `
+      <div class="rounded-industrial bg-stone-100 dark:bg-stone-800/70 p-2.5 text-center">
+        <p class="text-[9px] uppercase font-bold text-stone-500 dark:text-stone-400">${label}</p>
+        <p class="mt-1 grid grid-cols-2 gap-1 text-[11px] font-black text-stone-900 dark:text-white"><span>A ${value(a, unit)}</span><span>B ${value(b, unit)}</span></p>
+      </div>`;
+
+    let verdict = 'Ambas ubicaciones presentan condiciones operacionales equivalentes.';
+    if (evaluationA.score < evaluationB.score) verdict = 'La ubicación A presenta una condición operacional más favorable ahora.';
+    if (evaluationB.score < evaluationA.score) verdict = 'La ubicación B presenta una condición operacional más favorable ahora.';
+    const timeRows = RDCFT.config.OPERATIONAL_HOURS.map(hour => {
+      const statusA = RDCFT.rdcft.evaluate(sampleFor(pointA, hour));
+      const statusB = RDCFT.rdcft.evaluate(sampleFor(pointB, hour));
+      const label = `${String(hour).padStart(2, '0')}:00 · A: ${statusA.status}; B: ${statusB.status}`;
+      return `<div class="flex flex-col items-center gap-1" title="${RDCFT.utils.escapeHtml(label)}" aria-label="${RDCFT.utils.escapeHtml(label)}"><span class="text-[9px] font-black text-stone-500 dark:text-stone-400">${String(hour).padStart(2, '0')}</span><span class="flex gap-0.5" aria-hidden="true"><i class="w-2 h-2 rounded-full ${statusA.indicatorColor}"></i><i class="w-2 h-2 rounded-full ${statusB.indicatorColor}"></i></span></div>`;
+    }).join('');
+    const pointHeader = (point, letter, evaluation) => `
+      <div class="min-w-0 rounded-industrial border border-stone-200 dark:border-stone-700 bg-white/80 dark:bg-stone-950/30 p-3">
+        <div class="flex items-start justify-between gap-2"><p class="min-w-0 truncate text-xs font-black text-stone-900 dark:text-white">${letter}. ${RDCFT.utils.escapeHtml(point.name)}</p><span class="shrink-0 px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase border ${evaluation.badgeClass}">${RDCFT.utils.escapeHtml(evaluation.status)}</span></div>
+        <p class="mt-2 text-[10px] leading-relaxed text-stone-600 dark:text-stone-300">${RDCFT.utils.escapeHtml(evaluation.reasons?.[0] || 'Sin restricciones activas.')}</p>
+        <button type="button" data-use-comparison="${letter}" class="mt-2 text-[10px] font-black text-orange-700 dark:text-industrial-naranja hover:underline">Usar como punto principal</button>
+      </div>`;
+
+    el.innerHTML = `
+      <div class="border-t border-stone-200 dark:border-stone-700 pt-3 space-y-3">
+        <p class="text-[10px] text-stone-500 dark:text-stone-400">Condiciones a las ${String(RDCFT.state.selectedHour).padStart(2, '0')}:00 del ${RDCFT.utils.escapeHtml(RDCFT.utils.formatDDMMYYYY(dateStr))}</p>
+        <div class="grid grid-cols-2 gap-2">${pointHeader(pointA, 'A', evaluationA)}${pointHeader(pointB, 'B', evaluationB)}</div>
+        <div class="rounded-industrial border border-stone-200 dark:border-stone-700 bg-white/80 dark:bg-stone-950/30 p-3"><p class="text-xs font-black text-stone-800 dark:text-stone-100">${verdict}</p></div>
+        <div class="grid grid-cols-2 gap-2">
+          ${metric('Temperatura', sampleA?.temp, sampleB?.temp, '°C')}
+          ${metric('Humedad', sampleA?.humidity, sampleB?.humidity, '%')}
+          ${metric('Viento', sampleA?.wind, sampleB?.wind, ' km/h')}
+          ${metric('Racha', sampleA?.gust, sampleB?.gust, ' km/h')}
+          ${metric('Lluvia', sampleA?.rain, sampleB?.rain, ' mm')}
+        </div>
+        <div class="pt-3 border-t border-stone-200 dark:border-stone-700"><div class="flex items-center justify-between gap-3"><p class="text-[10px] uppercase tracking-wider font-black text-stone-500 dark:text-stone-400">Ventana operacional</p><p class="text-[9px] text-stone-500 dark:text-stone-400">Punto izq.: A · der.: B</p></div><div class="mt-2 flex items-center justify-between">${timeRows}</div></div>
+      </div>
+    `;
+  }
+
   // --- Leyenda de color ---
   function renderLegend() {
     const el = $('ui-color-legend');
@@ -286,6 +400,8 @@
     renderAll,
     renderDateSelector,
     renderSidebarCards,
+    renderOperationalSummary,
+    renderComparison,
     renderLegend,
     updateLayerButtons,
     updateCoords,

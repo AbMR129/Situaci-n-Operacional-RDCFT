@@ -15,6 +15,13 @@
     // --- Datos ---
     weatherData: null,     // pronóstico completo del punto consultado
     regionalSamples: [],   // [{ name, lat, lng, hourly }] con datos reales de la API
+    comparison: {
+      pointA: null,
+      pointB: null,
+      isLoading: false,
+      requestSeq: 0,
+      controller: null
+    },
 
     // --- Selección temporal ---
     selectedDayIndex: 0,   // 0 = hoy
@@ -22,13 +29,21 @@
 
     // --- Vista ---
     activeLayer: 'temp',   // temp | humidity | rain | wind
-    mapTileType: 'satellite',
+    mapTileType: 'dark',
+    // Una elección explícita del usuario prevalece sobre el cambio automático
+    // de mapa base hasta que vuelva a abrir la aplicación.
+    mapTypeManual: false,
     theme: 'dark',
 
     // --- Objetos de Leaflet / canvas ---
     map: null,
     marker: null,
     cityMarkersGroup: null,
+    parcelsLayer: null,
+    parcelsData: null,
+    parcelSelectionLayer: null,
+    parcelsLoading: false,
+    onPointSelected: null,
     tileLayers: {},
     windCanvas: null,
     windCtx: null,

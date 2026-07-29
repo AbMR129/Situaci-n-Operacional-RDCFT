@@ -23,9 +23,16 @@
   ].join(',');
 
   // Variables mínimas para los badges de ciudad y el mapa de calor.
-  const REGIONAL_VARS = 'temperature_2m,relative_humidity_2m,precipitation';
+  const REGIONAL_VARS = [
+    'temperature_2m',
+    'relative_humidity_2m',
+    'precipitation',
+    'wind_speed_10m',
+    'wind_direction_10m'
+  ].join(',');
 
   const API = 'https://api.open-meteo.com/v1/forecast';
+  const REGIONAL_BATCH_SIZE = 45;
 
   /**
    * Índice dentro de `hourly.time` para un día y una hora dados.
@@ -101,7 +108,7 @@
    * del punto consultado, así que los badges de ciudad mostraban cifras que no
    * correspondían a ningún pronóstico.
    */
-  async function fetchRegional(points, signal) {
+  async function fetchRegionalBatch(points, signal) {
     const lats = points.map(p => p.lat).join(',');
     const lngs = points.map(p => p.lng).join(',');
     const url = `${API}?latitude=${lats}&longitude=${lngs}` +
@@ -113,8 +120,23 @@
       name: p.name,
       lat: p.lat,
       lng: p.lng,
+      minZoom: p.minZoom,
       hourly: list[i]?.hourly ?? null
     }));
+  }
+
+  /**
+   * Carga localidades por grupos para que el mapa pueda cubrir varias regiones
+   * sin generar una URL excesivamente larga. Cada grupo sigue siendo una consulta
+   * multipunto y todos se resuelven en paralelo.
+   */
+  async function fetchRegional(points, signal) {
+    const batches = [];
+    for (let index = 0; index < points.length; index += REGIONAL_BATCH_SIZE) {
+      batches.push(points.slice(index, index + REGIONAL_BATCH_SIZE));
+    }
+    const results = await Promise.all(batches.map(batch => fetchRegionalBatch(batch, signal)));
+    return results.flat();
   }
 
   // --- Nominatim, con limitación de tasa (su política permite 1 req/s) ---
@@ -155,6 +177,24 @@
     });
   }
 
+  /**
+   * Sugerencias de localidades de la zona de trabajo: Maule a Los Lagos. Este
+   * respaldo dinámico evita depender de un catálogo manual de cada caserío.
+   */
+  function searchRegionalPlaces(query, signal) {
+    return throttleNominatim(async () => {
+      const viewbox = '-74.4,-34.2,-70.6,-44.2';
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=cl&bounded=1&viewbox=${viewbox}&q=${encodeURIComponent(query)}`;
+      const results = await getJSON(url, signal);
+      return (results || []).map(result => ({
+        lat: parseFloat(result.lat),
+        lng: parseFloat(result.lon),
+        name: result.display_name.split(',')[0],
+        detail: result.display_name
+      }));
+    });
+  }
+
   RDCFT.weather = {
     indexFor,
     sampleAt,
@@ -162,6 +202,7 @@
     fetchForecast,
     fetchRegional,
     reverseGeocode,
-    searchPlace
+    searchPlace,
+    searchRegionalPlaces
   };
 })(window.RDCFT = window.RDCFT || {});
