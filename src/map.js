@@ -588,7 +588,12 @@
   }
 
   function useMapCenterAsOperationalPoint() {
-    const center = RDCFT.state.map?.getCenter?.();
+    const map = RDCFT.state.map;
+    // Si el usuario pulsa durante el pequeño paneo de exploración, `getCenter()`
+    // puede capturar una posición intermedia y el mapa seguir moviéndose después.
+    // Se detiene primero para que marcador y mira queden exactamente centrados.
+    map?.stop?.();
+    const center = map?.getCenter?.();
     if (!center) return;
     RDCFT.state.onPointSelected?.(center.lat, center.lng, '__map_center_operational__');
   }
