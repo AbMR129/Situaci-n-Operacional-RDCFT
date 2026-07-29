@@ -216,7 +216,10 @@
     PAISAJES: PAISAJES,
     REGIONAL_SPOTS: REGIONAL_SPOTS,
     PARTICLE_COUNT: 150,
-    WIND_ANIMATION_SPEED: 0.85,
+    // Multiplicador global de la animación de viento. La velocidad base ya se
+    // calibra en canvas.js (píxeles por segundo según km/h); esto queda como
+    // único mando para acelerar o frenar el conjunto sin tocar la física.
+    WIND_ANIMATION_SPEED: 1,
     // Nominatim exige como máximo 1 petición por segundo.
     NOMINATIM_MIN_INTERVAL_MS: 1100
   };

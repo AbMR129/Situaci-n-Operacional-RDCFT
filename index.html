@@ -182,6 +182,11 @@
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75), 0 0 5px var(--badge-dot, #38bdf8);
     }
     .locality-dot {
+      /* `display: block` es imprescindible: <i> es inline por defecto y en CSS
+         `width`/`height` no se aplican a elementos inline no reemplazados. Sin
+         esto el punto colapsaba a un cuadro de ancho cero y sólo se veía su
+         borde, es decir, un trazo fino y vertical por cada localidad. */
+      display: block;
       width: 7px;
       height: 7px;
       border-radius: 999px;

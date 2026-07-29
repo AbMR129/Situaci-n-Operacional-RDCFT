@@ -8,6 +8,23 @@
   let lastFrameAt = null;
   let windPausedForZoom = false;
 
+  // --- Campo de viento -------------------------------------------------------
+  // Componentes en ejes de PANTALLA (x→este, y→sur) y en km/h. Se interpolan por
+  // separado: promediar ángulos de dirección directamente da resultados absurdos
+  // (el promedio de 350° y 10° serían 180°, justo el rumbo opuesto).
+  let windField = [];        // {lat, lng, sx, sy} de toda la red regional
+  let activeWindPoints = []; // subconjunto en vista, ya proyectado a píxeles
+  let windFieldKey = '';     // día|hora con que se construyó windField
+  let lastFieldUpdate = 0;
+
+  // Calibración visual. La velocidad se expresa en píxeles por segundo y es
+  // independiente de los FPS. El suelo garantiza que el flujo se lea incluso con
+  // viento muy débil, que es lo habitual en invierno en la zona.
+  const MIN_PX_S = 45;
+  const PX_PER_KMH = 9;
+  const MAX_PX_S = 200;
+  const TRAIL_POINTS = 14;   // posiciones guardadas por partícula
+
   function init() {
     const container = document.getElementById('map-viewport');
     if (!container) return;
@@ -75,26 +92,133 @@
     return { w: container ? container.clientWidth : 800, h: container ? container.clientHeight : 600 };
   }
 
+  /**
+   * Reconstruye el campo a partir de la red regional, una vez por día/hora.
+   * Convierte cada rumbo meteorológico (dirección DESDE la que sopla, en grados
+   * horarios desde el norte) a componentes de avance en pantalla.
+   */
+  function buildWindField() {
+    const st = RDCFT.state;
+    const dateStr = st.weatherData?.daily?.time?.[st.selectedDayIndex];
+    const key = `${dateStr}|${st.selectedHour}|${st.regionalSamples.length}`;
+    if (key === windFieldKey) return;
+    windFieldKey = key;
+    windField = [];
+    // Reconstruir el campo invalida la proyección en píxeles: si no se vaciara,
+    // se seguirían usando las posiciones y vectores del día u hora anteriores.
+    activeWindPoints = [];
+    if (!dateStr) return;
+
+    st.regionalSamples.forEach(spot => {
+      const index = RDCFT.weather.indexFor(spot.hourly, dateStr, st.selectedHour);
+      if (index < 0) return;
+      const speed = RDCFT.utils.num(spot.hourly?.wind_speed_10m?.[index], null);
+      const direction = RDCFT.utils.num(spot.hourly?.wind_direction_10m?.[index], null);
+      if (speed === null || direction === null) return;
+
+      const radians = direction * Math.PI / 180;
+      windField.push({
+        lat: spot.lat,
+        lng: spot.lng,
+        sx: -Math.sin(radians) * speed,
+        sy: Math.cos(radians) * speed
+      });
+    });
+  }
+
+  /**
+   * Proyecta a píxeles los puntos del campo que están en vista. Hacerlo una vez
+   * por refresco (y no por partícula) mantiene la interpolación barata: luego
+   * todo el muestreo ocurre ya en coordenadas de pantalla.
+   */
+  function updateActiveWindPoints() {
+    const st = RDCFT.state;
+    if (!st.map || !windField.length) {
+      activeWindPoints = [];
+      return;
+    }
+
+    const bounds = st.map.getBounds().pad(0.6);
+    let selection = windField.filter(p => bounds.contains([p.lat, p.lng]));
+
+    // Cerca del borde del dominio puede no haber puntos dentro de la vista;
+    // en ese caso se usan los más cercanos al centro para no quedarse sin campo.
+    if (selection.length < 3) {
+      const center = st.map.getCenter();
+      const distance = p => (p.lat - center.lat) ** 2 + (p.lng - center.lng) ** 2;
+      selection = windField.slice().sort((a, b) => distance(a) - distance(b)).slice(0, 8);
+    }
+
+    activeWindPoints = selection.slice(0, 48).map(p => {
+      const point = st.map.latLngToContainerPoint([p.lat, p.lng]);
+      return { x: point.x, y: point.y, sx: p.sx, sy: p.sy };
+    });
+  }
+
+  /**
+   * Interpolación por distancia inversa en coordenadas de pantalla. El término
+   * de suavizado evita la singularidad justo encima de un punto de la red.
+   */
+  function sampleWindAtScreen(x, y) {
+    const points = activeWindPoints;
+    if (!points.length) return null;
+
+    let sumX = 0;
+    let sumY = 0;
+    let weights = 0;
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const dx = x - p.x;
+      const dy = y - p.y;
+      const weight = 1 / (dx * dx + dy * dy + 900);
+      sumX += weight * p.sx;
+      sumY += weight * p.sy;
+      weights += weight;
+    }
+    if (!weights) return null;
+    return { sx: sumX / weights, sy: sumY / weights };
+  }
+
+  /** Viento del punto consultado, como respaldo mientras no hay red regional. */
+  function fallbackWind() {
+    const sample = RDCFT.weather.currentSample();
+    if (!sample || sample.wind === null || sample.direction === null) return { sx: 0, sy: 6 };
+    const radians = sample.direction * Math.PI / 180;
+    return {
+      sx: -Math.sin(radians) * sample.wind,
+      sy: Math.cos(radians) * sample.wind
+    };
+  }
+
+  /** Convierte componentes en km/h a velocidad de pantalla en píxeles por segundo. */
+  function toScreenVelocity(wind) {
+    const magnitude = Math.hypot(wind.sx, wind.sy);
+    const pixels = RDCFT.utils.clamp(MIN_PX_S + magnitude * PX_PER_KMH, MIN_PX_S, MAX_PX_S);
+    if (magnitude < 0.001) return { vx: 0, vy: pixels };
+    const scale = pixels / magnitude;
+    return { vx: wind.sx * scale, vy: wind.sy * scale };
+  }
+
   function createParticles() {
     const st = RDCFT.state;
     st.windParticles = [];
     for (let i = 0; i < particleCountForZoom(); i++) {
-      st.windParticles.push(resetParticle({}));
+      const particle = resetParticle({});
+      // Edad inicial repartida: evita que todas reaparezcan a la vez y se vea un
+      // parpadeo sincronizado del campo entero.
+      particle.age = Math.random() * particle.maxAge;
+      st.windParticles.push(particle);
     }
   }
 
   /**
-   * La cantidad se mide por pantalla, no por superficie geográfica. Si se
-   * conservara el mismo número al acercarse, el flujo quedaría demasiado
-   * concentrado sobre un territorio cada vez más pequeño y parecería lluvia.
+   * La cantidad se mide por pantalla, no por superficie geográfica. Con estelas
+   * largas conviene menos densidad al acercarse para que no se saturen.
    */
   function particleCountForZoom() {
     const zoom = RDCFT.state.map?.getZoom?.() ?? 9;
-    if (zoom >= 14) return 34;
-    if (zoom >= 13) return 48;
-    if (zoom >= 12) return 72;
-    if (zoom >= 11) return 100;
-    if (zoom >= 10) return 125;
+    if (zoom >= 14) return 110;
+    if (zoom >= 12) return 130;
     return RDCFT.config.PARTICLE_COUNT;
   }
 
@@ -107,68 +231,15 @@
     while (particles.length < target) particles.push(resetParticle({}));
   }
 
-  /**
-   * Viento de referencia regional: promedio vectorial de los puntos de la red.
-   * No depende del punto consultado, por lo que el flujo queda estable al mover
-   * el marcador por el mapa.
-   */
-  function regionalWindReference() {
-    const st = RDCFT.state;
-    const dateStr = st.weatherData?.daily?.time?.[st.selectedDayIndex];
-    if (!dateStr || !st.regionalSamples.length) return null;
-
-    let sumX = 0;
-    let sumY = 0;
-    let count = 0;
-    st.regionalSamples.forEach(spot => {
-      const index = RDCFT.weather.indexFor(spot.hourly, dateStr, st.selectedHour);
-      const speed = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_speed_10m?.[index], null) : null;
-      const direction = index >= 0 ? RDCFT.utils.num(spot.hourly?.wind_direction_10m?.[index], null) : null;
-      if (speed === null || direction === null) return;
-      const radians = direction * Math.PI / 180;
-      sumX += Math.cos(radians) * speed;
-      sumY += Math.sin(radians) * speed;
-      count++;
-    });
-    if (!count) return null;
-    return {
-      speed: Math.hypot(sumX, sumY) / count,
-      direction: (Math.atan2(sumY, sumX) * 180 / Math.PI + 360) % 360
-    };
-  }
-
   function resetParticle(p) {
     const { w, h } = viewportSize();
 
     p.x = Math.random() * w;
     p.y = Math.random() * h;
     p.age = 0;
-    p.maxAge = 1.6 + Math.random() * 1.4;
-
-    let speed = 22;
-    let dirDeg = 315;
-
-    const regionalWind = regionalWindReference();
-    if (regionalWind) {
-      // Velocidad visual en píxeles por segundo, deliberadamente desacoplada
-      // de los FPS para que la lectura sea estable y no tape el mapa.
-      speed = Math.max(16, regionalWind.speed * 2.1);
-      dirDeg = regionalWind.direction;
-    }
-
-    // El rumbo meteorológico indica desde DÓNDE sopla el viento, medido en grados
-    // horarios desde el norte. En coordenadas de pantalla (x→este, y→sur) el
-    // vector de avance es vx = -sen θ, vy = cos θ, equivalente a un ángulo de
-    // pantalla de (θ + 90°). La versión anterior usaba (θ + 180°), que dibujaba
-    // las partículas giradas 90° respecto del viento real.
-    // Una leve variación por partícula evita un patrón artificial de líneas
-    // perfectamente paralelas cuando el viento regional viene casi del norte/sur.
-    const angleRad = ((dirDeg + 90 + (Math.random() - 0.5) * 28) * Math.PI) / 180;
-    const jitter = 0.8 + Math.random() * 0.4;
-
-    p.flowAngle = angleRad;
-    p.speed = speed * jitter;
-    p.phase = Math.random() * Math.PI * 2;
+    p.maxAge = 2.5 + Math.random() * 2.5;
+    // Coordenadas planas [x0,y0,x1,y1,…]: evita crear un objeto por posición.
+    p.trail = [p.x, p.y];
 
     return p;
   }
@@ -181,16 +252,19 @@
     const st = RDCFT.state;
     if (!st.heatmapCtx || !st.map || !st.weatherData) return;
 
+    const ctx = st.heatmapCtx;
+    const { w, h } = viewportSize();
+
+    // El borrado va ANTES de cualquier salida temprana: si no, al pasar de lluvia
+    // a temperatura el dibujo anterior se quedaba congelado sobre el mapa.
+    ctx.clearRect(0, 0, w, h);
+
     const layer = st.activeLayer;
     if (!RDCFT.config.LAYERS[layer]) return;
 
     // Temperatura y humedad se leen mejor sobre el mapa base y en los badges de
     // ciudad; se omiten los focos difusos que podían tapar el territorio.
     if (layer === 'temp' || layer === 'humidity') return;
-
-    const ctx = st.heatmapCtx;
-    const { w, h } = viewportSize();
-    ctx.clearRect(0, 0, w, h);
 
     const points = RDCFT.field.knownPoints(layer);
     if (!points.length) return;
@@ -222,27 +296,52 @@
     ctx.restore();
   }
 
-  function animate(timestamp) {
-    const st = RDCFT.state;
-    if (!st.windCtx || !st.windCanvas) {
-      rafId = requestAnimationFrame(animate);
-      return;
-    }
+  /**
+   * Bucle de animación.
+   *
+   * El cuerpo va dentro de `drawFrame` y la reprogramación en el `finally` de
+   * aquí: si una excepción escapara, nunca se llamaría a `requestAnimationFrame`
+   * y el bucle moriría para siempre, dejando el último fotograma congelado sobre
+   * el mapa. Ese era el origen de las «líneas estáticas»: estelas de viento que
+   * seguían en pantalla incluso con otra capa activa, porque ya nadie borraba el
+   * lienzo. Un fallo puntual ahora se registra una vez y la animación continúa.
+   */
+  let loopErrorLogged = false;
 
-    // El mapa de calor sólo se recalcula cuando cambió algo (mapa, capa, día,
-    // hora o datos), en vez de redibujar diez gradientes radiales en cada frame.
+  function animate(timestamp) {
+    try {
+      drawFrame(timestamp);
+    } catch (err) {
+      if (!loopErrorLogged) {
+        loopErrorLogged = true;
+        console.error('Fallo al dibujar el fotograma; la animación continúa:', err);
+      }
+    } finally {
+      rafId = requestAnimationFrame(animate);
+    }
+  }
+
+  function drawFrame(timestamp) {
+    const st = RDCFT.state;
+    if (!st.windCtx || !st.windCanvas) return;
+
     if (st.heatmapDirty) {
-      renderHeatmap();
+      // La marca se limpia ANTES de dibujar: si el repintado fallara, no se
+      // reintentaría en bucle en cada fotograma.
       st.heatmapDirty = false;
+      renderHeatmap();
     }
 
     const ctx = st.windCtx;
     const { w, h } = viewportSize();
 
-    // Durante el zoom Leaflet escala el mapa por CSS; el canvas se pausa para
-    // que sus estelas no queden estiradas o desfasadas respecto del terreno.
-    if (windPausedForZoom) {
-      ctx.clearRect(0, 0, w, h);
+    // El lienzo se rehace entero en cada fotograma. Antes se desvanecía con
+    // `destination-out`, lo que dejaba residuos si la animación se interrumpía;
+    // redibujar estelas completas elimina esa clase de artefacto por completo.
+    ctx.clearRect(0, 0, w, h);
+
+    // Durante el zoom Leaflet escala el mapa por CSS y las proyecciones no valen.
+    if (windPausedForZoom || st.activeLayer !== 'wind') {
       lastFrameAt = null;
       rafId = requestAnimationFrame(animate);
       return;
@@ -251,48 +350,61 @@
     const dt = lastFrameAt === null ? 1 / 60 : RDCFT.utils.clamp((timestamp - lastFrameAt) / 1000, 0, 0.05);
     lastFrameAt = timestamp;
 
-    // Fuera de la capa de viento, el canvas queda limpio para preservar la
-    // lectura de temperatura, humedad y precipitación.
-    if (st.activeLayer !== 'wind') {
-      ctx.clearRect(0, 0, w, h);
-      rafId = requestAnimationFrame(animate);
-      return;
+    buildWindField();
+    if (timestamp - lastFieldUpdate > 400) {
+      updateActiveWindPoints();
+      lastFieldUpdate = timestamp;
     }
 
-    // Desvanecer las estelas sin acumular fondo negro.
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalCompositeOperation = 'source-over';
-
-    ctx.lineWidth = 1.4;
+    const speedScale = RDCFT.config.WIND_ANIMATION_SPEED;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.78)';
+    ctx.lineJoin = 'round';
     ctx.beginPath();
 
     st.windParticles.forEach(p => {
-      // Desvío pequeño y continuo: conserva el rumbo regional, pero evita que
-      // el flujo se lea como una cortina de lluvia en vientos norte-sur.
-      const angle = p.flowAngle + Math.sin(p.age * 3.2 + p.phase) * 0.16;
-      const vx = Math.cos(angle) * p.speed;
-      const vy = Math.sin(angle) * p.speed;
-      ctx.moveTo(p.x, p.y);
-      p.x += vx * RDCFT.config.WIND_ANIMATION_SPEED * dt;
-      p.y += vy * RDCFT.config.WIND_ANIMATION_SPEED * dt;
-      p.age += dt;
-      ctx.lineTo(p.x, p.y);
+      // El viento se muestrea en la posición actual de la partícula, así que la
+      // trayectoria sigue el campo real en vez de una única dirección global.
+      const wind = sampleWindAtScreen(p.x, p.y) || fallbackWind();
+      const { vx, vy } = toScreenVelocity(wind);
 
-      if (p.x < 0 || p.x > w || p.y < 0 || p.y > h || p.age > p.maxAge) resetParticle(p);
+      p.x += vx * speedScale * dt;
+      p.y += vy * speedScale * dt;
+      p.age += dt;
+
+      p.trail.push(p.x, p.y);
+      if (p.trail.length > TRAIL_POINTS * 2) p.trail.splice(0, 2);
+
+      if (p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20 || p.age > p.maxAge) {
+        resetParticle(p);
+        return;
+      }
+
+      const trail = p.trail;
+      ctx.moveTo(trail[0], trail[1]);
+      for (let i = 2; i < trail.length; i += 2) ctx.lineTo(trail[i], trail[i + 1]);
     });
 
+    // Dos pasadas sobre el mismo trazado: un halo ancho y tenue más un núcleo
+    // fino y brillante. Da sensación de luz sin coste apreciable.
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.20)';
+    ctx.lineWidth = 3.4;
     ctx.stroke();
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.92)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
     rafId = requestAnimationFrame(animate);
   }
 
   /** Reinicia el campo de partículas tras cambiar de día, hora o ubicación. */
   function refreshParticles() {
     syncParticleDensity();
-    RDCFT.state.windParticles.forEach(resetParticle);
+    RDCFT.state.windParticles.forEach(p => {
+      resetParticle(p);
+      p.age = Math.random() * p.maxAge;
+    });
+    windFieldKey = '';
+    lastFieldUpdate = 0;
   }
 
   function setZooming(isZooming) {
@@ -300,8 +412,25 @@
     const st = RDCFT.state;
     const { w, h } = viewportSize();
     st.windCtx?.clearRect(0, 0, w, h);
-    if (!windPausedForZoom) refreshParticles();
+    if (!windPausedForZoom) {
+      syncParticleDensity();
+      // Sólo se descartan las estelas: las partículas conservan su posición, así
+      // que el flujo continúa en vez de reaparecer entero de golpe tras el zoom.
+      st.windParticles.forEach(p => { p.trail = [p.x, p.y]; });
+      lastFieldUpdate = 0;
+    }
   }
 
-  RDCFT.canvas = { init, resize, refreshParticles, setZooming };
+  /**
+   * Velocidad de pantalla (px/s) que tendría una partícula situada en ese píxel.
+   * Es el punto por el que se verifica el invariante crítico del rumbo: viento
+   * del norte debe empujar hacia abajo en pantalla, no hacia un lado.
+   */
+  function velocityAt(x, y) {
+    buildWindField();
+    if (!activeWindPoints.length) updateActiveWindPoints();
+    return toScreenVelocity(sampleWindAtScreen(x, y) || fallbackWind());
+  }
+
+  RDCFT.canvas = { init, resize, refreshParticles, setZooming, velocityAt };
 })(window.RDCFT = window.RDCFT || {});
