@@ -35,6 +35,7 @@
     updateLayerButtons();
     updateDateIndicator();
     updateHourLabel();
+    updateMapInspector();
   }
 
   // --- Selector de días ---
@@ -330,6 +331,52 @@
     if (dms) dms.textContent = RDCFT.utils.formatCoordsDMS(st.coords.lat, st.coords.lng);
   }
 
+  /** Lectura interpolada en el centro visible, sin disparar una consulta por cada movimiento. */
+  function updateMapInspector(lat, lng) {
+    const st = RDCFT.state;
+    const center = Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lat, lng }
+      : st.map?.getCenter?.() || st.coords;
+    const regionalValue = field => {
+      const dateStr = selectedDateStr();
+      const points = st.regionalSamples.map(spot => {
+        const index = dateStr ? RDCFT.weather.indexFor(spot.hourly, dateStr, st.selectedHour) : -1;
+        const value = index >= 0 ? RDCFT.utils.num(spot.hourly?.[field]?.[index], null) : null;
+        return value === null ? null : { lat: spot.lat, lng: spot.lng, value };
+      }).filter(Boolean);
+      return RDCFT.field.interpolate(points, center.lat, center.lng);
+    };
+    const temp = RDCFT.field.interpolate(RDCFT.field.knownPoints('temp'), center.lat, center.lng);
+    const humidity = RDCFT.field.interpolate(RDCFT.field.knownPoints('humidity'), center.lat, center.lng);
+    const rain = RDCFT.field.interpolate(RDCFT.field.knownPoints('rain'), center.lat, center.lng);
+    const wind = regionalValue('wind_speed_10m');
+    const gust = regionalValue('wind_gusts_10m');
+    const evaluation = RDCFT.rdcft.evaluate({ temp, humidity, rain, wind, gust });
+    const layer = st.activeLayer;
+    const active = layer === 'wind' ? wind : layer === 'temp' ? temp : layer === 'humidity' ? humidity : rain;
+    const labels = { wind: 'Viento', temp: 'Temperatura', humidity: 'Humedad relativa', rain: 'Lluvia' };
+    const units = { wind: ' km/h', temp: '°C', humidity: '%', rain: ' mm' };
+    const formatted = (value, unit, decimals = 0) => value === null || value === undefined ? '—' : `${Number(value).toFixed(decimals)}${unit}`;
+
+    const set = (id, value) => { const el = $(id); if (el) el.textContent = value; };
+    set('ui-map-inspector-layer', labels[layer] || 'Condiciones');
+    set('ui-map-inspector-value', formatted(active, units[layer] || '', layer === 'rain' ? 1 : 0));
+    set('ui-map-inspector-temp', formatted(temp, '°C'));
+    set('ui-map-inspector-humidity', formatted(humidity, '%'));
+    set('ui-map-inspector-rain', formatted(rain, ' mm', 1));
+    set('ui-map-inspector-wind', formatted(wind, ' km/h'));
+    set('ui-map-inspector-coords', `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`);
+    set('ui-map-inspector-dms', RDCFT.utils.formatCoordsDMS(center.lat, center.lng));
+    set('ui-map-inspector-detail', `Centro visible · ${st.regionalSamples.length || 0} puntos regionales · interpolado`);
+
+    const status = $('ui-map-inspector-status');
+    if (status) {
+      status.textContent = evaluation.status;
+      status.style.color = evaluation.dotColor;
+      status.style.borderColor = evaluation.dotColor;
+    }
+  }
+
   function updateComuna() {
     const el = $('ui-comuna-name');
     if (el) el.textContent = `Comuna: ${RDCFT.state.comunaName}`;
@@ -409,6 +456,7 @@
     updateLocationHeader,
     updateDateIndicator,
     updateHourLabel,
+    updateMapInspector,
     setLoading,
     toast,
     selectedDateStr,

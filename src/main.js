@@ -283,6 +283,7 @@
       RDCFT.map.renderCityBadges(selectPoint);
       RDCFT.canvas.refreshParticles();
       RDCFT.ui.renderLegend();
+      RDCFT.ui.updateMapInspector();
       RDCFT.markHeatmapDirty();
     } catch (err) {
       console.warn('No se pudieron cargar los puntos regionales:', err);
@@ -304,6 +305,7 @@
     RDCFT.map.renderCityBadges(selectPoint);
     RDCFT.canvas.refreshParticles();
     RDCFT.ui.renderLegend();
+    RDCFT.ui.updateMapInspector();
     RDCFT.markHeatmapDirty();
   }
 
@@ -313,6 +315,7 @@
     RDCFT.ui.renderLegend();
     RDCFT.map.renderCityBadges(selectPoint);
     RDCFT.markHeatmapDirty();
+    RDCFT.ui.updateMapInspector();
     // Si veníamos de otra capa, el bucle de viento estaba detenido. Este único
     // repintado lo reactiva al elegir Viento y limpia el canvas al elegir otra.
     RDCFT.canvas.requestRender();

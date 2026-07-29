@@ -5,6 +5,17 @@
 (function (RDCFT) {
   'use strict';
 
+  let inspectorFrame = null;
+
+  function requestMapInspector() {
+    if (inspectorFrame !== null) return;
+    inspectorFrame = requestAnimationFrame(() => {
+      inspectorFrame = null;
+      const center = RDCFT.state.map?.getCenter?.();
+      if (center) RDCFT.ui?.updateMapInspector?.(center.lat, center.lng);
+    });
+  }
+
   function init(onPointSelected) {
     const st = RDCFT.state;
     st.onPointSelected = onPointSelected;
@@ -70,10 +81,17 @@
     // obliga a reproyectarlo. Antes aquí se redimensionaba el canvas en cada
     // evento `move`, lo que lo borraba y hacía desaparecer las estelas de viento
     // durante el arrastre.
-    st.map.on('move zoom', RDCFT.markHeatmapDirty);
+    st.map.on('move', () => {
+      RDCFT.markHeatmapDirty();
+      requestMapInspector();
+    });
+    st.map.on('zoom', RDCFT.markHeatmapDirty);
     // Los pueblos aparecen al acercarse y se ocultan al alejarse; el pronóstico
     // ya está en memoria, por lo que este ajuste no dispara nuevas peticiones.
-    st.map.on('moveend', () => renderCityBadges(onPointSelected));
+    st.map.on('moveend', () => {
+      renderCityBadges(onPointSelected);
+      requestMapInspector();
+    });
     st.map.on('zoomstart', () => RDCFT.canvas.setZooming(true));
     st.map.on('zoomend', () => {
       applyAdaptiveBaseMap();
@@ -81,6 +99,7 @@
       RDCFT.canvas.setZooming(false);
     });
     st.map.on('resize', () => RDCFT.canvas.resize());
+    requestMapInspector();
   }
 
   function setTileType(type, isManual = false) {
