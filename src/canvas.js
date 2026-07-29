@@ -78,9 +78,33 @@
   function createParticles() {
     const st = RDCFT.state;
     st.windParticles = [];
-    for (let i = 0; i < RDCFT.config.PARTICLE_COUNT; i++) {
+    for (let i = 0; i < particleCountForZoom(); i++) {
       st.windParticles.push(resetParticle({}));
     }
+  }
+
+  /**
+   * La cantidad se mide por pantalla, no por superficie geográfica. Si se
+   * conservara el mismo número al acercarse, el flujo quedaría demasiado
+   * concentrado sobre un territorio cada vez más pequeño y parecería lluvia.
+   */
+  function particleCountForZoom() {
+    const zoom = RDCFT.state.map?.getZoom?.() ?? 9;
+    if (zoom >= 14) return 34;
+    if (zoom >= 13) return 48;
+    if (zoom >= 12) return 72;
+    if (zoom >= 11) return 100;
+    if (zoom >= 10) return 125;
+    return RDCFT.config.PARTICLE_COUNT;
+  }
+
+  function syncParticleDensity() {
+    const st = RDCFT.state;
+    const target = particleCountForZoom();
+    const particles = st.windParticles || (st.windParticles = []);
+
+    if (particles.length > target) particles.length = target;
+    while (particles.length < target) particles.push(resetParticle({}));
   }
 
   /**
@@ -267,6 +291,7 @@
 
   /** Reinicia el campo de partículas tras cambiar de día, hora o ubicación. */
   function refreshParticles() {
+    syncParticleDensity();
     RDCFT.state.windParticles.forEach(resetParticle);
   }
 
