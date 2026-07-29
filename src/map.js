@@ -160,6 +160,8 @@
     const sample = RDCFT.weather.currentSample();
     const evaluation = sample ? RDCFT.rdcft.evaluate(sample) : null;
     const area = featureAreaHectares(feature);
+    const dateStr = RDCFT.state.weatherData?.daily?.time?.[RDCFT.state.selectedDayIndex];
+    const hour = String(RDCFT.state.selectedHour).padStart(2, '0');
     const metric = (label, value) => `<span style="color:#78716c;">${label}</span><strong style="color:#1c1917;">${value}</strong>`;
     const rounded = (value, unit) => value === null || value === undefined ? '—' : `${Math.round(value)}${unit}`;
     const weather = sample
@@ -180,6 +182,7 @@
         ${metric('Latitud', center.lat.toFixed(5))}
         ${metric('Longitud', center.lng.toFixed(5))}
       </div>
+      <p style="margin:9px 0 0;color:#78716c;font-size:11px;">Pronóstico: ${dateStr ? `${RDCFT.utils.formatLongDate(dateStr)} · ${hour}:00` : '—'}</p>
       ${weather}
     </div>`;
   }
@@ -195,6 +198,8 @@
         layer.on('click', event => L.DomEvent.stopPropagation(event.originalEvent));
       }
     }).addTo(st.map);
+    const selectionLayer = st.parcelSelectionLayer;
+    updateParcelSelectionControls(true);
 
     const bounds = st.parcelSelectionLayer.getBounds();
     if (!bounds.isValid()) return Promise.resolve();
@@ -205,7 +210,7 @@
     const name = feature.properties?.nombre || `Predio ${feature.properties?.id || ''}`.trim();
     const forecastRequest = Promise.resolve(st.onPointSelected?.(center.lat, center.lng, name));
     forecastRequest.then(() => {
-      if (st.parcelSelectionLayer) st.parcelSelectionLayer.setPopupContent(parcelPopupHtml(feature, center)).openPopup(center);
+      if (st.parcelSelectionLayer === selectionLayer) selectionLayer.setPopupContent(parcelPopupHtml(feature, center)).openPopup(center);
     });
     return forecastRequest;
   }
@@ -217,6 +222,11 @@
     if (st.map?.hasLayer(st.parcelSelectionLayer)) st.map.removeLayer(st.parcelSelectionLayer);
     st.map?.closePopup();
     st.parcelSelectionLayer = null;
+    updateParcelSelectionControls(false);
+  }
+
+  function updateParcelSelectionControls(active) {
+    document.getElementById('ui-clear-parcel-selection')?.classList.toggle('hidden', !active);
   }
 
   async function loadParcelsData() {
@@ -267,12 +277,17 @@
   function updateParcelsButton(active, loading) {
     const button = document.getElementById('ui-parcels-toggle');
     if (!button) return;
+    const legend = document.getElementById('ui-parcels-legend');
     button.disabled = Boolean(loading);
     button.classList.toggle('chip-active', Boolean(active));
     button.classList.toggle('chip-inactive', !active);
     button.setAttribute('aria-pressed', String(Boolean(active)));
     button.title = active ? 'Ocultar predios' : 'Mostrar predios';
     button.setAttribute('aria-label', button.title);
+    if (legend) {
+      legend.classList.toggle('hidden', !active);
+      legend.classList.toggle('flex', Boolean(active));
+    }
   }
 
   /** Carga los predios sólo cuando se solicitan, para no pesar el arranque. */
@@ -282,7 +297,10 @@
 
     if (st.parcelsLayer) {
       const visible = st.map.hasLayer(st.parcelsLayer);
-      if (visible) st.map.removeLayer(st.parcelsLayer);
+      if (visible) {
+        st.map.removeLayer(st.parcelsLayer);
+        clearParcelSelection();
+      }
       else st.parcelsLayer.addTo(st.map);
       updateParcelsButton(!visible, false);
       return;
@@ -363,7 +381,7 @@
     const zoom = st.map?.getZoom() ?? 0;
     const visibleArea = st.map?.getBounds()?.pad(0.12);
     st.regionalSamples.filter(spot =>
-      zoom >= (spot.minZoom ?? 7) && (!visibleArea || visibleArea.contains([spot.lat, spot.lng]))
+      zoom >= Math.max(8, spot.minZoom ?? 7) && (!visibleArea || visibleArea.contains([spot.lat, spot.lng]))
     ).forEach(spot => {
       let value;
       let text;

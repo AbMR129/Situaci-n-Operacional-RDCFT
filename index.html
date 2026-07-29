@@ -289,6 +289,9 @@
       outline: 3px solid rgba(249, 115, 22, 0.6);
       outline-offset: 2px;
     }
+
+    /* Se conserva sólo la navegación con acciones reales; configuración no tiene vista asociada. */
+    [data-purpose="sidebar-navigation"] button[title="Configuración"] { display: none; }
 </style>
 </head>
 <body class="h-full font-sans transition-colors duration-200">
@@ -305,7 +308,8 @@
       <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-stone-400" aria-hidden="true">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
       </span>
-      <input id="ui-search-global" data-role="search" class="bg-stone-100 dark:bg-industrial-madera border-none text-sm rounded-industrial py-2 pl-10 pr-4 w-full focus:ring-2 focus:ring-industrial-naranja text-stone-800 dark:text-stone-200 placeholder-stone-400" placeholder="Buscar lugar, comuna o predio (ID/nombre)..." type="search"/>
+      <input id="ui-search-global" data-role="search" class="bg-stone-100 dark:bg-industrial-madera border-none text-sm rounded-industrial py-2 pl-10 pr-20 w-full focus:ring-2 focus:ring-industrial-naranja text-stone-800 dark:text-stone-200 placeholder-stone-400" placeholder="Buscar lugar, comuna o predio (ID/nombre)..." type="search"/>
+      <button id="ui-clear-parcel-selection" type="button" class="hidden absolute inset-y-1.5 right-2 rounded-industrial px-2 text-[10px] font-black text-stone-500 hover:bg-stone-200 dark:text-stone-300 dark:hover:bg-stone-800" title="Limpiar selección predial" aria-label="Limpiar selección predial">Limpiar</button>
       <div id="ui-search-results" class="hidden absolute top-full left-0 right-0 mt-2 max-h-[60dvh] overflow-y-auto rounded-industrial border border-stone-300 dark:border-stone-700 bg-white dark:bg-industrial-madera shadow-2xl p-2" role="listbox" aria-label="Resultados de búsqueda"></div>
     </div>
   </div>
@@ -320,12 +324,9 @@
     <!-- PDF Export Button -->
     <button id="ui-btn-pdf" type="button" class="flex items-center gap-2 bg-industrial-naranja hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-industrial text-sm transition-all active:scale-95 shadow-md">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
-      <span class="hidden sm:inline">Descargar PDF</span>
+      <span class="hidden sm:inline">Informe del punto</span>
     </button>
 
-    <div class="hidden md:flex items-center gap-2 border-l border-stone-300 dark:border-stone-700 pl-3">
-      <div class="w-8 h-8 rounded-full bg-industrial-calipso flex items-center justify-center text-white font-bold text-xs shadow" title="Usuario">UA</div>
-    </div>
   </div>
 </header>
 <!-- END: TopNavBar -->
@@ -420,6 +421,7 @@
       <button id="ui-parcels-toggle" type="button" title="Mostrar predios" aria-label="Mostrar predios" aria-pressed="false" class="px-3 py-1.5 text-xs rounded-industrial transition-all flex items-center gap-1.5 chip-inactive">
         <span aria-hidden="true">▱</span> <span class="hidden xl:inline">Predios</span>
       </button>
+      <span id="ui-parcels-legend" class="hidden items-center px-2 text-[10px] font-bold text-stone-600 dark:text-stone-300">Contorno naranja: predios</span>
     </div>
 
     <!-- Windy-Style Layer Selector Toolbar (Top Right) -->

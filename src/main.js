@@ -12,6 +12,32 @@
   let searchSuggestionItems = [];
   let searchSuggestionRequest = 0;
   let searchSuggestionTimer = null;
+  const LAST_POINT_STORAGE_KEY = 'rdcft-last-point-v1';
+
+  function persistLastPoint() {
+    try {
+      localStorage.setItem(LAST_POINT_STORAGE_KEY, JSON.stringify({
+        lat: st.coords.lat,
+        lng: st.coords.lng,
+        locationName: st.locationName,
+        comunaName: st.comunaName
+      }));
+    } catch (_) {
+      // El modo privado o una política del navegador puede bloquear almacenamiento.
+    }
+  }
+
+  function restoreLastPoint() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_POINT_STORAGE_KEY) || 'null');
+      if (!saved || !Number.isFinite(saved.lat) || !Number.isFinite(saved.lng)) return;
+      st.coords = { lat: saved.lat, lng: saved.lng };
+      st.locationName = saved.locationName || st.locationName;
+      st.comunaName = saved.comunaName || st.comunaName;
+    } catch (_) {
+      // Si el dato almacenado no es válido, se usa el punto predeterminado.
+    }
+  }
 
   // --- Cambios que obligan a repintar todo lo que depende de los datos ---
   function refreshDerived() {
@@ -217,6 +243,7 @@
       if (seq !== st.requestSeq) return;   // llegó tarde: ya hay otra consulta en curso
       st.weatherData = data;
       refreshDerived();
+      persistLastPoint();
     } catch (err) {
       if (err.name === 'AbortError' || seq !== st.requestSeq) return;
       console.error('Error al obtener el pronóstico:', err);
@@ -243,6 +270,7 @@
         st.locationName = comuna;
         RDCFT.ui.updateLocationHeader();
       }
+      persistLastPoint();
     } catch (err) {
       console.warn('Geocodificación inversa no disponible:', err);
     }
@@ -521,6 +549,7 @@
     document.getElementById('ui-zoom-out')?.addEventListener('click', () => st.map?.zoomOut());
     document.getElementById('ui-btn-pdf')?.addEventListener('click', () => RDCFT.pdf.exportReport());
     document.getElementById('ui-parcels-toggle')?.addEventListener('click', () => RDCFT.map.toggleParcels());
+    document.getElementById('ui-clear-parcel-selection')?.addEventListener('click', () => RDCFT.map.clearParcelSelection());
     document.getElementById('ui-comparison-open')?.addEventListener('click', openComparisonModal);
     document.getElementById('ui-comparison-close')?.addEventListener('click', () => closeComparisonModal(true));
     document.getElementById('ui-comparison-modal')?.addEventListener('click', e => {
@@ -640,6 +669,7 @@
   }
 
   function init() {
+    restoreLastPoint();
     phase('el tema', () => RDCFT.theme.init());
     phase('el mapa', () => RDCFT.map.init(onMapPointSelected));
     phase('las capas de canvas', () => RDCFT.canvas.init());
